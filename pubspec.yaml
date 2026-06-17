@@ -1,11 +1,19 @@
 name: flutter_ludo
 description: "A new Flutter package project."
 version: 0.0.1
-homepage:
+homepage: https://github.com/rojanparajuli/Flutter_ludo
+repository: https://github.com/rojanparajuli/Flutter_ludo
+issue_tracker: https://github.com/rojanparajuli/Flutter_ludo/issues
 
 environment:
   sdk: ^3.12.2
   flutter: ">=1.17.0"
+
+topics:
+  - ludo
+  - game
+  - board-game
+  - flutter  
 
 dependencies:
   flutter:
