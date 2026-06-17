@@ -1,4 +1,4 @@
-## 0.0.1
+## 0.0.2
 
 - Initial release of Flutter Ludo.
 - Supports 4-player Ludo gameplay.
@@ -8,3 +8,5 @@
 - Capture rules.
 - Win condition rules.
 - Dice widget and game widgets.
+- Added complete example application.
+- Improved package documentation.
