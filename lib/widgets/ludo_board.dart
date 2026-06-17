@@ -6,7 +6,6 @@ import 'package:flutter_ludo/model/ludo_piece.dart';
 import 'package:flutter_ludo/model/ludo_player.dart';
 
 import '../controller/ludo_controller.dart';
-
 import '../themes/ludo_theme.dart';
 
 /// Renders the fixed 15x15 Ludo board and every piece, driven by
@@ -57,6 +56,7 @@ class LudoBoard extends StatelessWidget {
                   onTap: legalPieceIds.contains(piece.id)
                       ? () => controller.selectPiece(piece.id)
                       : null,
+                  allPieces: state.pieces,
                 ),
             ],
           ),
@@ -74,6 +74,7 @@ class _PositionedPiece extends StatelessWidget {
     required this.color,
     required this.isLegal,
     required this.onTap,
+    required this.allPieces,
   });
 
   final LudoPiece piece;
@@ -81,36 +82,162 @@ class _PositionedPiece extends StatelessWidget {
   final Color color;
   final bool isLegal;
   final VoidCallback? onTap;
+  final List<LudoPiece> allPieces;
 
   @override
   Widget build(BuildContext context) {
     final center = _resolveCenter(piece, cell);
     final radius = cell * 0.34;
+    
+    // Calculate offset for stacked pieces
+    final offset = _calculateStackOffset(piece, allPieces, radius);
+    
+    // Check if this piece is at the top of a stack
+    final isTopOfStack = _isTopOfStack(piece, allPieces);
+    final isInStack = _isInStack(piece, allPieces);
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
-      left: center.dx - radius,
-      top: center.dy - radius,
+      left: center.dx - radius + offset.dx,
+      top: center.dy - radius + offset.dy,
       width: radius * 2,
       height: radius * 2,
       child: GestureDetector(
         onTap: onTap,
-        child: DecoratedBox(
+        behavior: HitTestBehavior.opaque,
+        child: Container(
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: isLegal ? Colors.white : Colors.black54,
-              width: isLegal ? 3 : 1.5,
+              color: _getBorderColor(isLegal, isTopOfStack, isInStack),
+              width: _getBorderWidth(isLegal, isTopOfStack, isInStack),
             ),
-            boxShadow: isLegal
-                ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 6)]
-                : null,
+            boxShadow: _getBoxShadow(isLegal, isTopOfStack, color),
+          ),
+          child: _buildStackIndicator(isInStack, isTopOfStack),
+        ),
+      ),
+    );
+  }
+
+  Widget? _buildStackIndicator(bool isInStack, bool isTopOfStack) {
+    if (!isInStack) return null;
+    
+    return Center(
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: isTopOfStack ? Colors.white : Colors.white.withValues(alpha: 0.5),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.black26,
+            width: 0.5,
           ),
         ),
       ),
     );
+  }
+
+  Color _getBorderColor(bool isLegal, bool isTopOfStack, bool isInStack) {
+    if (isLegal) return Colors.white;
+    if (isTopOfStack) return Colors.white70;
+    if (isInStack) return Colors.white38;
+    return Colors.black54;
+  }
+
+  double _getBorderWidth(bool isLegal, bool isTopOfStack, bool isInStack) {
+    if (isLegal) return 3.0;
+    if (isTopOfStack) return 2.5;
+    if (isInStack) return 1.5;
+    return 1.5;
+  }
+
+  List<BoxShadow>? _getBoxShadow(bool isLegal, bool isTopOfStack, Color color) {
+    if (isLegal) {
+      return [
+        BoxShadow(
+          color: color.withValues(alpha: 0.7),
+          blurRadius: 6,
+          spreadRadius: 2,
+        ),
+      ];
+    }
+    if (isTopOfStack) {
+      return [
+        BoxShadow(
+          color: Colors.black26,
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ];
+    }
+    return null;
+  }
+
+  Offset _calculateStackOffset(LudoPiece piece, List<LudoPiece> allPieces, double radius) {
+    // Get all pieces at the same position (excluding home and finished)
+    final piecesAtSamePosition = allPieces.where((p) => 
+      _isAtSamePosition(p, piece) &&
+      !p.isHome && 
+      !p.isFinished
+    ).toList();
+    
+    if (piecesAtSamePosition.length <= 1) {
+      return Offset.zero;
+    }
+
+    // Offset pieces in a circular pattern
+    final indexInStack = piecesAtSamePosition.indexOf(piece);
+    final totalInStack = piecesAtSamePosition.length;
+    
+    // Fan out in a circle with some randomness
+    final angle = (indexInStack / totalInStack) * 2 * math.pi + (math.pi / 4);
+    final distance = radius * 0.4; // Slightly less than radius to keep them overlapping
+    
+    return Offset(
+      distance * math.cos(angle),
+      distance * math.sin(angle),
+    );
+  }
+
+  bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
+    // Check if two pieces are at the same track position
+    if (a.isHome != b.isHome) return false;
+    if (a.isFinished != b.isFinished) return false;
+    
+    if (a.isHome || a.isFinished) {
+      return a.id == b.id; // Same piece
+    }
+    
+    return a.trackPosition == b.trackPosition && 
+           a.playerIndex == b.playerIndex;
+  }
+
+  bool _isTopOfStack(LudoPiece piece, List<LudoPiece> allPieces) {
+    final piecesAtSamePosition = allPieces.where((p) => 
+      _isAtSamePosition(p, piece) &&
+      !p.isHome && 
+      !p.isFinished
+    ).toList();
+    
+    if (piecesAtSamePosition.length <= 1) return false;
+    
+    // The top piece is the one with the highest ID (last added/moved)
+    // Or we could use the one with the most recent move time if available
+    return piecesAtSamePosition.last == piece;
+  }
+
+  bool _isInStack(LudoPiece piece, List<LudoPiece> allPieces) {
+    final piecesAtSamePosition = allPieces.where((p) => 
+      _isAtSamePosition(p, piece) &&
+      !p.isHome && 
+      !p.isFinished
+    ).toList();
+    
+    return piecesAtSamePosition.length > 1;
   }
 
   static Offset _resolveCenter(LudoPiece piece, double cell) {
@@ -182,7 +309,7 @@ class _LudoBoardPainter extends CustomPainter {
         cell * 6,
         cell * 6,
       );
-      canvas.drawRect(outer, Paint()..color = players[p].color.withValues(alpha:  0.20));
+      canvas.drawRect(outer, Paint()..color = players[p].color.withValues(alpha: 0.20));
       _strokeRect(canvas, outer, 1.5);
 
       final yard = Rect.fromLTWH(
@@ -228,7 +355,7 @@ class _LudoBoardPainter extends CustomPainter {
           cell,
           cell,
         );
-        canvas.drawRect(rect, Paint()..color = color.withValues(alpha:  0.45));
+        canvas.drawRect(rect, Paint()..color = color.withValues(alpha: 0.45));
         _strokeRect(canvas, rect, 1);
       }
     }
@@ -257,7 +384,7 @@ class _LudoBoardPainter extends CustomPainter {
         ..close();
       canvas.drawPath(
         path,
-        Paint()..color = players[playerIndex].color.withValues(alpha:  0.55),
+        Paint()..color = players[playerIndex].color.withValues(alpha: 0.55),
       );
     }
 
