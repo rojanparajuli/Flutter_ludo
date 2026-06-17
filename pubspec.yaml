@@ -1,6 +1,5 @@
 name: flutter_ludo
-description: "A new Flutter package project."
-version: 0.0.1
+description: A Flutter package providing a complete Ludo game engine, board widget, move validation, capture rules, dice rules, and 4-player gameplay support.version: 0.0.1
 homepage: https://github.com/rojanparajuli/Flutter_ludo
 repository: https://github.com/rojanparajuli/Flutter_ludo
 issue_tracker: https://github.com/rojanparajuli/Flutter_ludo/issues
