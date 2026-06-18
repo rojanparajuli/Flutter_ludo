@@ -69,7 +69,7 @@ class LudoBoard extends StatelessWidget {
     LudoPiece piece,
     LudoGameState state,
   ) {
-    // CRITICAL FIX: Only allow tapping if the piece belongs to the current player
+    // Only allow tapping pieces that belong to the current player.
     if (piece.playerIndex != state.currentPlayerIndex) {
       return; // Silently ignore taps on other players' pieces
     }
@@ -99,59 +99,10 @@ class LudoBoard extends StatelessWidget {
 
     if (legalPieces.isEmpty) return;
 
-    // If only one legal piece, select it directly
-    if (legalPieces.length == 1) {
-      controller.selectPiece(legalPieces.first.id);
-      return;
-    }
-
-    // Show dialog to choose which piece to move
-    _showStackSelectionDialog(context, legalPieces, state);
-  }
-
-  void _showStackSelectionDialog(
-    BuildContext context,
-    List<LudoPiece> legalPieces,
-    LudoGameState state,
-  ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select a piece to move'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: legalPieces.map((p) {
-              final playerColor = state.players[p.playerIndex].color;
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: playerColor,
-                  child: Text(
-                    '${p.id % 4 + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                title: Text('Piece ${p.id % 4 + 1}'),
-                onTap: () {
-                  Navigator.pop(context);
-                  controller.selectPiece(p.id);
-                },
-              );
-            }).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
+    // All pieces in the stack belong to the same player, so it doesn't
+    // matter which one is moved — pick one automatically instead of
+    // prompting the user to choose.
+    controller.selectPiece(legalPieces.first.id);
   }
 
   bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
@@ -203,7 +154,15 @@ class _PositionedPiece extends StatelessWidget {
       height: radius * 2,
       child: GestureDetector(
         onTap: isLegal ? onTap : null,
-        behavior: HitTestBehavior.opaque,
+        // Pieces that can't be tapped (e.g. another player's piece sitting
+        // on a safe cell on top of one of your own) must not swallow the
+        // tap. Only claim the hit region when this piece is actually
+        // actionable; otherwise let the tap pass through to whatever piece
+        // is underneath it so a blocked piece never prevents tapping the
+        // piece it's blocking.
+        behavior: isLegal
+            ? HitTestBehavior.opaque
+            : HitTestBehavior.translucent,
         child: Container(
           decoration: BoxDecoration(
             color: color,
