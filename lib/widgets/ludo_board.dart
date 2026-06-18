@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_ludo/constant/board_constants.dart';
+import 'package:flutter_ludo/model/ludo_game_state.dart';
 import 'package:flutter_ludo/model/ludo_piece.dart';
 import 'package:flutter_ludo/model/ludo_player.dart';
 
@@ -53,9 +54,7 @@ class LudoBoard extends StatelessWidget {
                   cell: cell,
                   color: state.players[piece.playerIndex].color,
                   isLegal: legalPieceIds.contains(piece.id),
-                  onTap: legalPieceIds.contains(piece.id)
-                      ? () => controller.selectPiece(piece.id)
-                      : null,
+                  onTap: () => _handlePieceTap(context, piece, state),
                   allPieces: state.pieces,
                 ),
             ],
@@ -63,6 +62,95 @@ class LudoBoard extends StatelessWidget {
         );
       },
     );
+  }
+
+  void _handlePieceTap(BuildContext context, LudoPiece piece, LudoGameState state) {
+    // Get all pieces at the same position
+    final piecesAtSamePosition = state.pieces.where((p) =>
+      _isAtSamePosition(p, piece) &&
+      !p.isHome &&
+      !p.isFinished
+    ).toList();
+
+    // If no stack or only one piece, just select it
+    if (piecesAtSamePosition.length <= 1) {
+      controller.selectPiece(piece.id);
+      return;
+    }
+
+    // Get legal pieces in this stack
+    final legalPieces = piecesAtSamePosition.where((p) =>
+      state.legalMoves.any((m) => m.pieceId == p.id)
+    ).toList();
+
+    if (legalPieces.isEmpty) return;
+
+    // If only one legal piece, select it directly
+    if (legalPieces.length == 1) {
+      controller.selectPiece(legalPieces.first.id);
+      return;
+    }
+
+    // Show dialog to choose which piece to move
+    _showStackSelectionDialog(context, legalPieces, state);
+  }
+
+  void _showStackSelectionDialog(
+    BuildContext context,
+    List<LudoPiece> legalPieces,
+    LudoGameState state,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select a piece to move'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: legalPieces.map((p) {
+              final playerColor = state.players[p.playerIndex].color;
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: playerColor,
+                  child: Text(
+                    '${p.id % 4 + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                title: Text('Piece ${p.id % 4 + 1}'),
+                subtitle: Text('Player: ${state.players[p.playerIndex].name}'),
+                onTap: () {
+                  Navigator.pop(context);
+                  controller.selectPiece(p.id);
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
+    if (a.isHome != b.isHome) return false;
+    if (a.isFinished != b.isFinished) return false;
+
+    if (a.isHome || a.isFinished) {
+      return a.id == b.id;
+    }
+
+    return a.trackPosition == b.trackPosition &&
+        a.playerIndex == b.playerIndex;
   }
 }
 
@@ -81,20 +169,18 @@ class _PositionedPiece extends StatelessWidget {
   final double cell;
   final Color color;
   final bool isLegal;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
   final List<LudoPiece> allPieces;
 
   @override
   Widget build(BuildContext context) {
     final center = _resolveCenter(piece, cell);
     final radius = cell * 0.34;
-    
-    // Calculate offset for stacked pieces
+
     final offset = _calculateStackOffset(piece, allPieces, radius);
-    
-    // Check if this piece is at the top of a stack
     final isTopOfStack = _isTopOfStack(piece, allPieces);
     final isInStack = _isInStack(piece, allPieces);
+    final isSelectable = isLegal && isInStack && !isTopOfStack;
 
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 220),
@@ -104,58 +190,122 @@ class _PositionedPiece extends StatelessWidget {
       width: radius * 2,
       height: radius * 2,
       child: GestureDetector(
-        onTap: onTap,
+        onTap: isLegal ? onTap : null,
         behavior: HitTestBehavior.opaque,
         child: Container(
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: _getBorderColor(isLegal, isTopOfStack, isInStack),
-              width: _getBorderWidth(isLegal, isTopOfStack, isInStack),
+              color: _getBorderColor(isLegal, isTopOfStack, isInStack, isSelectable),
+              width: _getBorderWidth(isLegal, isTopOfStack, isInStack, isSelectable),
             ),
-            boxShadow: _getBoxShadow(isLegal, isTopOfStack, color),
+            boxShadow: _getBoxShadow(isLegal, isTopOfStack, color, isSelectable),
           ),
-          child: _buildStackIndicator(isInStack, isTopOfStack),
+          child: Stack(
+            children: [
+              // Visual indicator for selectable pieces in stack
+              if (isSelectable)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Stack position indicator
+              ?_buildStackIndicator(isInStack, isTopOfStack, isSelectable),
+              // Piece number for identification
+              if (isInStack)
+                Center(
+                  child: Text(
+                    '${piece.id % 4 + 1}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: isTopOfStack ? 1.0 : 0.6),
+                      fontSize: radius * 0.6,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget? _buildStackIndicator(bool isInStack, bool isTopOfStack) {
+  Widget? _buildStackIndicator(bool isInStack, bool isTopOfStack, bool isSelectable) {
     if (!isInStack) return null;
-    
-    return Center(
+
+    Color dotColor;
+    if (isTopOfStack) {
+      dotColor = Colors.white;
+    } else if (isSelectable) {
+      dotColor = Colors.white.withValues(alpha: 0.9);
+    } else {
+      dotColor = Colors.white.withValues(alpha: 0.3);
+    }
+
+    return Positioned(
+      bottom: 2,
+      right: 2,
       child: Container(
-        width: 8,
-        height: 8,
+        width: 10,
+        height: 10,
         decoration: BoxDecoration(
-          color: isTopOfStack ? Colors.white : Colors.white.withValues(alpha: 0.5),
+          color: dotColor,
           shape: BoxShape.circle,
           border: Border.all(
-            color: Colors.black26,
-            width: 0.5,
+            color: isSelectable ? Colors.white : Colors.black26,
+            width: isSelectable ? 2 : 0.5,
           ),
         ),
       ),
     );
   }
 
-  Color _getBorderColor(bool isLegal, bool isTopOfStack, bool isInStack) {
+  Color _getBorderColor(bool isLegal, bool isTopOfStack, bool isInStack, bool isSelectable) {
+    if (isSelectable) return Colors.white;
     if (isLegal) return Colors.white;
     if (isTopOfStack) return Colors.white70;
     if (isInStack) return Colors.white38;
     return Colors.black54;
   }
 
-  double _getBorderWidth(bool isLegal, bool isTopOfStack, bool isInStack) {
+  double _getBorderWidth(bool isLegal, bool isTopOfStack, bool isInStack, bool isSelectable) {
+    if (isSelectable) return 3.0;
     if (isLegal) return 3.0;
     if (isTopOfStack) return 2.5;
     if (isInStack) return 1.5;
     return 1.5;
   }
 
-  List<BoxShadow>? _getBoxShadow(bool isLegal, bool isTopOfStack, Color color) {
+  List<BoxShadow>? _getBoxShadow(bool isLegal, bool isTopOfStack, Color color, bool isSelectable) {
+    if (isSelectable) {
+      return [
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.5),
+          blurRadius: 12,
+          spreadRadius: 4,
+        ),
+        BoxShadow(
+          color: color.withValues(alpha: 0.4),
+          blurRadius: 8,
+          spreadRadius: 2,
+        ),
+      ];
+    }
     if (isLegal) {
       return [
         BoxShadow(
@@ -178,25 +328,23 @@ class _PositionedPiece extends StatelessWidget {
   }
 
   Offset _calculateStackOffset(LudoPiece piece, List<LudoPiece> allPieces, double radius) {
-    // Get all pieces at the same position (excluding home and finished)
-    final piecesAtSamePosition = allPieces.where((p) => 
+    final piecesAtSamePosition = allPieces.where((p) =>
       _isAtSamePosition(p, piece) &&
-      !p.isHome && 
+      !p.isHome &&
       !p.isFinished
     ).toList();
-    
+
     if (piecesAtSamePosition.length <= 1) {
       return Offset.zero;
     }
 
-    // Offset pieces in a circular pattern
     final indexInStack = piecesAtSamePosition.indexOf(piece);
     final totalInStack = piecesAtSamePosition.length;
-    
-    // Fan out in a circle with some randomness
+
+    // Fan out in a circle
     final angle = (indexInStack / totalInStack) * 2 * math.pi + (math.pi / 4);
-    final distance = radius * 0.4; // Slightly less than radius to keep them overlapping
-    
+    final distance = radius * 0.5; // Increased spacing
+
     return Offset(
       distance * math.cos(angle),
       distance * math.sin(angle),
@@ -204,39 +352,37 @@ class _PositionedPiece extends StatelessWidget {
   }
 
   bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
-    // Check if two pieces are at the same track position
     if (a.isHome != b.isHome) return false;
     if (a.isFinished != b.isFinished) return false;
-    
+
     if (a.isHome || a.isFinished) {
-      return a.id == b.id; // Same piece
+      return a.id == b.id;
     }
-    
-    return a.trackPosition == b.trackPosition && 
-           a.playerIndex == b.playerIndex;
+
+    return a.trackPosition == b.trackPosition &&
+        a.playerIndex == b.playerIndex;
   }
 
   bool _isTopOfStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces.where((p) => 
+    final piecesAtSamePosition = allPieces.where((p) =>
       _isAtSamePosition(p, piece) &&
-      !p.isHome && 
+      !p.isHome &&
       !p.isFinished
     ).toList();
-    
+
     if (piecesAtSamePosition.length <= 1) return false;
-    
+
     // The top piece is the one with the highest ID (last added/moved)
-    // Or we could use the one with the most recent move time if available
     return piecesAtSamePosition.last == piece;
   }
 
   bool _isInStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces.where((p) => 
+    final piecesAtSamePosition = allPieces.where((p) =>
       _isAtSamePosition(p, piece) &&
-      !p.isHome && 
+      !p.isHome &&
       !p.isFinished
     ).toList();
-    
+
     return piecesAtSamePosition.length > 1;
   }
 
@@ -250,15 +396,11 @@ class _PositionedPiece extends StatelessWidget {
     }
 
     if (piece.isFinished) {
-      // Fan finished pieces out a little within the center square so a
-      // player's 4 finished tokens (and other players') don't fully
-      // overlap. Each player is nudged toward the corner closest to their
-      // own home base.
       const cornerNudge = [
-        Offset(-0.55, -0.55), // player 0: top-left
-        Offset(0.55, -0.55), // player 1: top-right
-        Offset(0.55, 0.55), // player 2: bottom-right
-        Offset(-0.55, 0.55), // player 3: bottom-left
+        Offset(-0.55, -0.55),
+        Offset(0.55, -0.55),
+        Offset(0.55, 0.55),
+        Offset(-0.55, 0.55),
       ];
       final base = cornerNudge[piece.playerIndex];
       final siblingIndex = piece.id % 4;
@@ -282,7 +424,7 @@ class _LudoBoardPainter extends CustomPainter {
   final LudoTheme theme;
   final List<LudoPlayer> players;
 
-  static const List<int> _trianglePlayers = [1, 2, 3, 0]; // top,right,bottom,left
+  static const List<int> _trianglePlayers = [1, 2, 3, 0];
 
   @override
   void paint(Canvas canvas, Size size) {

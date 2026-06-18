@@ -1,3 +1,6 @@
+## 0.0.4
+- Improved Stack Interaction for pieces
+
 ## 0.0.3
 
 - Fixed an issue where pieces underneath a stack could not be tapped.
