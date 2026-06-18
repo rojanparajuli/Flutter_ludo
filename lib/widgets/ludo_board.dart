@@ -64,13 +64,27 @@ class LudoBoard extends StatelessWidget {
     );
   }
 
-  void _handlePieceTap(BuildContext context, LudoPiece piece, LudoGameState state) {
-    // Get all pieces at the same position
-    final piecesAtSamePosition = state.pieces.where((p) =>
-      _isAtSamePosition(p, piece) &&
-      !p.isHome &&
-      !p.isFinished
-    ).toList();
+  void _handlePieceTap(
+    BuildContext context,
+    LudoPiece piece,
+    LudoGameState state,
+  ) {
+    // CRITICAL FIX: Only allow tapping if the piece belongs to the current player
+    if (piece.playerIndex != state.currentPlayerIndex) {
+      return; // Silently ignore taps on other players' pieces
+    }
+
+    // Get all pieces at the same position (only current player's pieces)
+    final piecesAtSamePosition = state.pieces
+        .where(
+          (p) =>
+              _isAtSamePosition(p, piece) &&
+              !p.isHome &&
+              !p.isFinished &&
+              p.playerIndex ==
+                  state.currentPlayerIndex, // Only current player's pieces
+        )
+        .toList();
 
     // If no stack or only one piece, just select it
     if (piecesAtSamePosition.length <= 1) {
@@ -78,10 +92,10 @@ class LudoBoard extends StatelessWidget {
       return;
     }
 
-    // Get legal pieces in this stack
-    final legalPieces = piecesAtSamePosition.where((p) =>
-      state.legalMoves.any((m) => m.pieceId == p.id)
-    ).toList();
+    // Get legal pieces in this stack (only current player's pieces)
+    final legalPieces = piecesAtSamePosition
+        .where((p) => state.legalMoves.any((m) => m.pieceId == p.id))
+        .toList();
 
     if (legalPieces.isEmpty) return;
 
@@ -122,7 +136,6 @@ class LudoBoard extends StatelessWidget {
                   ),
                 ),
                 title: Text('Piece ${p.id % 4 + 1}'),
-                subtitle: Text('Player: ${state.players[p.playerIndex].name}'),
                 onTap: () {
                   Navigator.pop(context);
                   controller.selectPiece(p.id);
@@ -149,8 +162,7 @@ class LudoBoard extends StatelessWidget {
       return a.id == b.id;
     }
 
-    return a.trackPosition == b.trackPosition &&
-        a.playerIndex == b.playerIndex;
+    return a.trackPosition == b.trackPosition && a.playerIndex == b.playerIndex;
   }
 }
 
@@ -197,10 +209,25 @@ class _PositionedPiece extends StatelessWidget {
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: _getBorderColor(isLegal, isTopOfStack, isInStack, isSelectable),
-              width: _getBorderWidth(isLegal, isTopOfStack, isInStack, isSelectable),
+              color: _getBorderColor(
+                isLegal,
+                isTopOfStack,
+                isInStack,
+                isSelectable,
+              ),
+              width: _getBorderWidth(
+                isLegal,
+                isTopOfStack,
+                isInStack,
+                isSelectable,
+              ),
             ),
-            boxShadow: _getBoxShadow(isLegal, isTopOfStack, color, isSelectable),
+            boxShadow: _getBoxShadow(
+              isLegal,
+              isTopOfStack,
+              color,
+              isSelectable,
+            ),
           ),
           child: Stack(
             children: [
@@ -226,13 +253,15 @@ class _PositionedPiece extends StatelessWidget {
                 ),
               // Stack position indicator
               ?_buildStackIndicator(isInStack, isTopOfStack, isSelectable),
-              // Piece number for identification
+              // Piece number for identification (only for current player's pieces)
               if (isInStack)
                 Center(
                   child: Text(
                     '${piece.id % 4 + 1}',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: isTopOfStack ? 1.0 : 0.6),
+                      color: Colors.white.withValues(
+                        alpha: isTopOfStack ? 1.0 : 0.6,
+                      ),
                       fontSize: radius * 0.6,
                       fontWeight: FontWeight.bold,
                     ),
@@ -245,7 +274,11 @@ class _PositionedPiece extends StatelessWidget {
     );
   }
 
-  Widget? _buildStackIndicator(bool isInStack, bool isTopOfStack, bool isSelectable) {
+  Widget? _buildStackIndicator(
+    bool isInStack,
+    bool isTopOfStack,
+    bool isSelectable,
+  ) {
     if (!isInStack) return null;
 
     Color dotColor;
@@ -275,7 +308,12 @@ class _PositionedPiece extends StatelessWidget {
     );
   }
 
-  Color _getBorderColor(bool isLegal, bool isTopOfStack, bool isInStack, bool isSelectable) {
+  Color _getBorderColor(
+    bool isLegal,
+    bool isTopOfStack,
+    bool isInStack,
+    bool isSelectable,
+  ) {
     if (isSelectable) return Colors.white;
     if (isLegal) return Colors.white;
     if (isTopOfStack) return Colors.white70;
@@ -283,7 +321,12 @@ class _PositionedPiece extends StatelessWidget {
     return Colors.black54;
   }
 
-  double _getBorderWidth(bool isLegal, bool isTopOfStack, bool isInStack, bool isSelectable) {
+  double _getBorderWidth(
+    bool isLegal,
+    bool isTopOfStack,
+    bool isInStack,
+    bool isSelectable,
+  ) {
     if (isSelectable) return 3.0;
     if (isLegal) return 3.0;
     if (isTopOfStack) return 2.5;
@@ -291,7 +334,12 @@ class _PositionedPiece extends StatelessWidget {
     return 1.5;
   }
 
-  List<BoxShadow>? _getBoxShadow(bool isLegal, bool isTopOfStack, Color color, bool isSelectable) {
+  List<BoxShadow>? _getBoxShadow(
+    bool isLegal,
+    bool isTopOfStack,
+    Color color,
+    bool isSelectable,
+  ) {
     if (isSelectable) {
       return [
         BoxShadow(
@@ -327,12 +375,14 @@ class _PositionedPiece extends StatelessWidget {
     return null;
   }
 
-  Offset _calculateStackOffset(LudoPiece piece, List<LudoPiece> allPieces, double radius) {
-    final piecesAtSamePosition = allPieces.where((p) =>
-      _isAtSamePosition(p, piece) &&
-      !p.isHome &&
-      !p.isFinished
-    ).toList();
+  Offset _calculateStackOffset(
+    LudoPiece piece,
+    List<LudoPiece> allPieces,
+    double radius,
+  ) {
+    final piecesAtSamePosition = allPieces
+        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
+        .toList();
 
     if (piecesAtSamePosition.length <= 1) {
       return Offset.zero;
@@ -343,12 +393,9 @@ class _PositionedPiece extends StatelessWidget {
 
     // Fan out in a circle
     final angle = (indexInStack / totalInStack) * 2 * math.pi + (math.pi / 4);
-    final distance = radius * 0.5; // Increased spacing
+    final distance = radius * 0.5;
 
-    return Offset(
-      distance * math.cos(angle),
-      distance * math.sin(angle),
-    );
+    return Offset(distance * math.cos(angle), distance * math.sin(angle));
   }
 
   bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
@@ -359,29 +406,23 @@ class _PositionedPiece extends StatelessWidget {
       return a.id == b.id;
     }
 
-    return a.trackPosition == b.trackPosition &&
-        a.playerIndex == b.playerIndex;
+    return a.trackPosition == b.trackPosition && a.playerIndex == b.playerIndex;
   }
 
   bool _isTopOfStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces.where((p) =>
-      _isAtSamePosition(p, piece) &&
-      !p.isHome &&
-      !p.isFinished
-    ).toList();
+    final piecesAtSamePosition = allPieces
+        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
+        .toList();
 
     if (piecesAtSamePosition.length <= 1) return false;
 
-    // The top piece is the one with the highest ID (last added/moved)
     return piecesAtSamePosition.last == piece;
   }
 
   bool _isInStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces.where((p) =>
-      _isAtSamePosition(p, piece) &&
-      !p.isHome &&
-      !p.isFinished
-    ).toList();
+    final piecesAtSamePosition = allPieces
+        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
+        .toList();
 
     return piecesAtSamePosition.length > 1;
   }
@@ -412,8 +453,8 @@ class _PositionedPiece extends StatelessWidget {
 
     final cellCoord = piece.trackPosition < LudoPiece.sharedPathSpan
         ? kPathCells[globalCellOf(piece.playerIndex, piece.trackPosition)]
-        : kHomeStretchCells[piece.playerIndex]
-            [piece.trackPosition - LudoPiece.sharedPathSpan];
+        : kHomeStretchCells[piece.playerIndex][piece.trackPosition -
+              LudoPiece.sharedPathSpan];
     return Offset((cellCoord[1] + 0.5) * cell, (cellCoord[0] + 0.5) * cell);
   }
 }
@@ -451,7 +492,10 @@ class _LudoBoardPainter extends CustomPainter {
         cell * 6,
         cell * 6,
       );
-      canvas.drawRect(outer, Paint()..color = players[p].color.withValues(alpha: 0.20));
+      canvas.drawRect(
+        outer,
+        Paint()..color = players[p].color.withValues(alpha: 0.20),
+      );
       _strokeRect(canvas, outer, 1.5);
 
       final yard = Rect.fromLTWH(
@@ -468,12 +512,7 @@ class _LudoBoardPainter extends CustomPainter {
   void _paintSharedPath(Canvas canvas, double cell) {
     for (var i = 0; i < kPathCells.length; i++) {
       final coord = kPathCells[i];
-      final rect = Rect.fromLTWH(
-        coord[1] * cell,
-        coord[0] * cell,
-        cell,
-        cell,
-      );
+      final rect = Rect.fromLTWH(coord[1] * cell, coord[0] * cell, cell, cell);
       final isSafe = kSafeIndices.contains(i);
       canvas.drawRect(
         rect,

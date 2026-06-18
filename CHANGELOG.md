@@ -1,3 +1,6 @@
+## 0.0.5
+- Prevents accidental selection of opponent pieces during a player's turn.
+
 ## 0.0.4
 - Improved Stack Interaction for pieces
 
