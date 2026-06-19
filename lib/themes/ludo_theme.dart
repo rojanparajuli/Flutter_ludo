@@ -13,6 +13,9 @@ class LudoTheme {
     this.gridLineColor = const Color(0xFFBDBDBD),
     this.centerCellColor = const Color(0xFFFFFFFF),
     this.starIconColor = const Color(0xFF6B6B6B),
+    this.homeBorderColor = const Color(0xFF666666),
+    this.homePartitionColor = const Color(0xFF888888),
+    this.movementTrailColor = const Color(0x40FFFFFF),
   });
 
   /// Color filling the area outside the playable cells.
@@ -34,6 +37,15 @@ class LudoTheme {
   /// Color of the star icon drawn on each safe cell.
   final Color starIconColor;
 
+  /// Color for home base borders
+  final Color homeBorderColor;
+
+  /// Color for home base partitions
+  final Color homePartitionColor;
+
+  /// Color for movement trail effect
+  final Color movementTrailColor;
+
   static const LudoTheme defaultTheme = LudoTheme();
 
   LudoTheme copyWith({
@@ -43,6 +55,9 @@ class LudoTheme {
     Color? gridLineColor,
     Color? centerCellColor,
     Color? starIconColor,
+    Color? homeBorderColor,
+    Color? homePartitionColor,
+    Color? movementTrailColor,
   }) {
     return LudoTheme(
       boardBackgroundColor: boardBackgroundColor ?? this.boardBackgroundColor,
@@ -51,6 +66,9 @@ class LudoTheme {
       gridLineColor: gridLineColor ?? this.gridLineColor,
       centerCellColor: centerCellColor ?? this.centerCellColor,
       starIconColor: starIconColor ?? this.starIconColor,
+      homeBorderColor: homeBorderColor ?? this.homeBorderColor,
+      homePartitionColor: homePartitionColor ?? this.homePartitionColor,
+      movementTrailColor: movementTrailColor ?? this.movementTrailColor,
     );
   }
 }
