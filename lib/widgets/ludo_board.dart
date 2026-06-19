@@ -1,19 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_ludo/constant/board_constants.dart';
-import 'package:flutter_ludo/model/ludo_game_state.dart';
-import 'package:flutter_ludo/model/ludo_piece.dart';
-import 'package:flutter_ludo/model/ludo_player.dart';
 
+import '../constant/board_constants.dart';
 import '../controller/ludo_controller.dart';
+import '../model/ludo_game_state.dart';
+import '../model/ludo_piece.dart';
+import '../model/ludo_player.dart';
 import '../themes/ludo_theme.dart';
 
-/// Renders the fixed 15x15 Ludo board and every piece, driven by
-/// [controller].
-///
-/// Tapping a piece that is part of the current legal moves calls
-/// [LudoController.selectPiece] automatically — no extra wiring needed.
 class LudoBoard extends StatelessWidget {
   const LudoBoard({
     super.key,
@@ -33,38 +28,43 @@ class LudoBoard extends StatelessWidget {
             : 360.0;
         final cell = size / kBoardGridSize;
         final state = controller.state;
-        final legalPieceIds = state.legalMoves.map((m) => m.pieceId).toSet();
+        final legalIds = state.legalMoves.map((m) => m.pieceId).toSet();
+
+        final visiblePieces = _mergeAnimating(
+          state.pieces,
+          controller.animatingPiece,
+        );
+
+        // Z-order: current player's pieces always on top
+        final currentIdx = state.currentPlayerIndex;
+        final sorted = [
+          ...visiblePieces.where((p) => p.playerIndex != currentIdx),
+          ...visiblePieces.where((p) => p.playerIndex == currentIdx),
+        ];
 
         return SizedBox(
           width: size,
           height: size,
           child: Stack(
             children: [
+              // Board
               CustomPaint(
                 size: Size(size, size),
-                painter: _LudoBoardPainter(
-                  theme: theme,
-                  players: state.players,
-                ),
+                painter: _BoardPainter(theme: theme, players: state.players),
               ),
-              // Movement trail overlay
-              if (state.lastMovedPiece != null)
-                _MovementTrail(
-                  piece: state.lastMovedPiece!,
-                  cell: cell,
-                  color: state.players[state.lastMovedPiece!.playerIndex].color,
-                  theme: theme,
-                ),
-              for (final piece in state.pieces)
-                _PositionedPiece(
+              // Pieces
+              for (final piece in sorted)
+                _FlatPiece(
                   key: ValueKey(piece.id),
                   piece: piece,
                   cell: cell,
                   color: state.players[piece.playerIndex].color,
-                  isLegal: legalPieceIds.contains(piece.id),
-                  onTap: () => _handlePieceTap(context, piece, state),
-                  allPieces: state.pieces,
-                  isLastMoved: state.lastMovedPiece?.id == piece.id,
+                  isLegal: legalIds.contains(piece.id),
+                  isLastMoved:
+                      state.lastMovedPiece?.id == piece.id &&
+                      controller.animatingPiece == null,
+                  allPieces: visiblePieces,
+                  onTap: () => _onTap(piece, state),
                 ),
             ],
           ),
@@ -73,490 +73,361 @@ class LudoBoard extends StatelessWidget {
     );
   }
 
-  void _handlePieceTap(
-    BuildContext context,
-    LudoPiece piece,
-    LudoGameState state,
-  ) {
-    // Only allow tapping pieces that belong to the current player.
-    if (piece.playerIndex != state.currentPlayerIndex) {
-      return; // Silently ignore taps on other players' pieces
-    }
+  List<LudoPiece> _mergeAnimating(List<LudoPiece> pieces, LudoPiece? anim) {
+    if (anim == null) return pieces;
+    return [for (final p in pieces) p.id == anim.id ? anim : p];
+  }
 
-    // Get all pieces at the same position (only current player's pieces)
-    final piecesAtSamePosition = state.pieces
+  void _onTap(LudoPiece piece, LudoGameState state) {
+    if (controller.isAnimating) return;
+    if (piece.playerIndex != state.currentPlayerIndex) return;
+
+    final legalHere = state.legalMoves
+        .map((m) => state.pieces.firstWhere((p) => p.id == m.pieceId))
         .where(
           (p) =>
-              _isAtSamePosition(p, piece) &&
-              !p.isHome &&
-              !p.isFinished &&
-              p.playerIndex ==
-                  state.currentPlayerIndex, // Only current player's pieces
+              p.playerIndex == state.currentPlayerIndex && _sameCell(p, piece),
         )
         .toList();
 
-    // If no stack or only one piece, just select it
-    if (piecesAtSamePosition.length <= 1) {
-      controller.selectPiece(piece.id);
-      return;
-    }
-
-    // Get legal pieces in this stack (only current player's pieces)
-    final legalPieces = piecesAtSamePosition
-        .where((p) => state.legalMoves.any((m) => m.pieceId == p.id))
-        .toList();
-
-    if (legalPieces.isEmpty) return;
-
-    // All pieces in the stack belong to the same player, so it doesn't
-    // matter which one is moved — pick one automatically instead of
-    // prompting the user to choose.
-    controller.selectPiece(legalPieces.first.id);
+    if (legalHere.isEmpty) return;
+    final pick = legalHere.any((p) => p.id == piece.id)
+        ? piece
+        : legalHere.first;
+    controller.selectPiece(pick.id);
   }
 
-  bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
-    if (a.isHome != b.isHome) return false;
-    if (a.isFinished != b.isFinished) return false;
-
-    if (a.isHome || a.isFinished) {
-      return a.id == b.id;
-    }
-
+  bool _sameCell(LudoPiece a, LudoPiece b) {
+    if (a.isHome != b.isHome || a.isFinished != b.isFinished) return false;
+    if (a.isHome || a.isFinished) return a.id == b.id;
     return a.trackPosition == b.trackPosition && a.playerIndex == b.playerIndex;
   }
 }
 
-// New widget for movement trail effect
-class _MovementTrail extends StatelessWidget {
-  const _MovementTrail({
-    required this.piece,
-    required this.cell,
-    required this.color,
-    required this.theme,
-  });
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat 2D piece
+// ─────────────────────────────────────────────────────────────────────────────
 
-  final LudoPiece piece;
-  final double cell;
-  final Color color;
-  final LudoTheme theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final center = _resolveCenter(piece, cell);
-    final radius = cell * 0.34;
-
-    return AnimatedPositioned(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOut,
-      left: center.dx - radius * 1.2,
-      top: center.dy - radius * 1.2,
-      width: radius * 2.4,
-      height: radius * 2.4,
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              color.withValues(alpha: 0.3),
-              color.withValues(alpha: 0.0),
-            ],
-            stops: const [0.0, 1.0],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.2),
-              blurRadius: 20,
-              spreadRadius: 5,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static Offset _resolveCenter(LudoPiece piece, double cell) {
-    if (piece.isHome) {
-      final origin = kHomeBaseOrigins[piece.playerIndex];
-      final slot = kHomeYardSlots[piece.id % 4];
-      final row = origin[0] + slot[0];
-      final col = origin[1] + slot[1];
-      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
-    }
-
-    if (piece.isFinished) {
-      const cornerNudge = [
-        Offset(-0.55, -0.55),
-        Offset(0.55, -0.55),
-        Offset(0.55, 0.55),
-        Offset(-0.55, 0.55),
-      ];
-      final base = cornerNudge[piece.playerIndex];
-      final siblingIndex = piece.id % 4;
-      final fan = (siblingIndex - 1.5) * 0.12;
-      final row = kCenterCell[0] + base.dy + fan;
-      final col = kCenterCell[1] + base.dx + fan;
-      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
-    }
-
-    final cellCoord = piece.trackPosition < LudoPiece.sharedPathSpan
-        ? kPathCells[globalCellOf(piece.playerIndex, piece.trackPosition)]
-        : kHomeStretchCells[piece.playerIndex][piece.trackPosition -
-              LudoPiece.sharedPathSpan];
-    return Offset((cellCoord[1] + 0.5) * cell, (cellCoord[0] + 0.5) * cell);
-  }
-}
-
-class _PositionedPiece extends StatelessWidget {
-  const _PositionedPiece({
+class _FlatPiece extends StatefulWidget {
+  const _FlatPiece({
     super.key,
     required this.piece,
     required this.cell,
     required this.color,
     required this.isLegal,
-    required this.onTap,
+    required this.isLastMoved,
     required this.allPieces,
-    this.isLastMoved = false,
+    required this.onTap,
   });
 
   final LudoPiece piece;
   final double cell;
   final Color color;
   final bool isLegal;
-  final VoidCallback onTap;
-  final List<LudoPiece> allPieces;
   final bool isLastMoved;
+  final List<LudoPiece> allPieces;
+  final VoidCallback onTap;
+
+  @override
+  State<_FlatPiece> createState() => _FlatPieceState();
+}
+
+class _FlatPieceState extends State<_FlatPiece>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pop;
+  late Animation<double> _scale;
+  Offset? _lastCenter;
+
+  @override
+  void initState() {
+    super.initState();
+    _pop = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+    _scale = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.22), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 1.22, end: 1.0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _pop, curve: Curves.easeInOut));
+  }
+
+  @override
+  void didUpdateWidget(_FlatPiece old) {
+    super.didUpdateWidget(old);
+    final c = _center(widget.piece, widget.cell);
+    if (_lastCenter != null && _lastCenter != c) _pop.forward(from: 0);
+    _lastCenter = c;
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final center = _resolveCenter(piece, cell);
-    final radius = cell * 0.34;
-
-    final offset = _calculateStackOffset(piece, allPieces, radius);
-    final isTopOfStack = _isTopOfStack(piece, allPieces);
-    final isInStack = _isInStack(piece, allPieces);
-    final isSelectable = isLegal && isInStack && !isTopOfStack;
+    final center = _center(widget.piece, widget.cell);
+    final radius = widget.cell * 0.36;
+    final offset = _stackOffset(radius);
 
     return AnimatedPositioned(
-      duration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 160),
       curve: Curves.easeOut,
       left: center.dx - radius + offset.dx,
       top: center.dy - radius + offset.dy,
       width: radius * 2,
       height: radius * 2,
       child: GestureDetector(
-        onTap: isLegal ? onTap : null,
-        behavior: isLegal
+        onTap: widget.isLegal ? widget.onTap : null,
+        behavior: widget.isLegal
             ? HitTestBehavior.opaque
             : HitTestBehavior.translucent,
-        child: Container(
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: _getBorderColor(
-                isLegal,
-                isTopOfStack,
-                isInStack,
-                isSelectable,
-                isLastMoved,
-              ),
-              width: _getBorderWidth(
-                isLegal,
-                isTopOfStack,
-                isInStack,
-                isSelectable,
-                isLastMoved,
-              ),
-            ),
-            boxShadow: _getBoxShadow(
-              isLegal,
-              isTopOfStack,
-              color,
-              isSelectable,
-              isLastMoved,
-            ),
-          ),
-          child: Stack(
-            children: [
-              // Visual indicator for selectable pieces in stack
-              if (isSelectable)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // Last moved indicator
-              if (isLastMoved)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.yellow,
-                        width: 3,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.yellow.withValues(alpha: 0.4),
-                          blurRadius: 12,
-                          spreadRadius: 4,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // Stack position indicator
-              ?_buildStackIndicator(isInStack, isTopOfStack, isSelectable),
-              // Piece number for identification
-              if (isInStack)
-                Center(
-                  child: Text(
-                    '${piece.id % 4 + 1}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(
-                        alpha: isTopOfStack ? 1.0 : 0.6,
-                      ),
-                      fontSize: radius * 0.6,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
+        child: ScaleTransition(
+          scale: _scale,
+          child: _TokenBody(
+            color: widget.color,
+            isLegal: widget.isLegal,
+            isLastMoved: widget.isLastMoved,
+            inStack: _inStack,
+            isTop: _isTop,
+            pieceLabel: '${widget.piece.id % 4 + 1}',
           ),
         ),
       ),
     );
   }
 
-  Widget? _buildStackIndicator(
-    bool isInStack,
-    bool isTopOfStack,
-    bool isSelectable,
-  ) {
-    if (!isInStack) return null;
+  // ── stack helpers ────────────────────────────────────────────────
 
-    Color dotColor;
-    if (isTopOfStack) {
-      dotColor = Colors.white;
-    } else if (isSelectable) {
-      dotColor = Colors.white.withValues(alpha: 0.9);
-    } else {
-      dotColor = Colors.white.withValues(alpha: 0.3);
-    }
-
-    return Positioned(
-      bottom: 2,
-      right: 2,
-      child: Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          color: dotColor,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isSelectable ? Colors.white : Colors.black26,
-            width: isSelectable ? 2 : 0.5,
-          ),
-        ),
-      ),
-    );
+  bool get _inStack {
+    return widget.allPieces
+            .where(
+              (p) => _sameCell(p, widget.piece) && !p.isHome && !p.isFinished,
+            )
+            .length >
+        1;
   }
 
-  Color _getBorderColor(
-    bool isLegal,
-    bool isTopOfStack,
-    bool isInStack,
-    bool isSelectable,
-    bool isLastMoved,
-  ) {
-    if (isLastMoved) return Colors.yellow;
-    if (isSelectable) return Colors.white;
-    if (isLegal) return Colors.white;
-    if (isTopOfStack) return Colors.white70;
-    if (isInStack) return Colors.white38;
-    return Colors.black54;
-  }
-
-  double _getBorderWidth(
-    bool isLegal,
-    bool isTopOfStack,
-    bool isInStack,
-    bool isSelectable,
-    bool isLastMoved,
-  ) {
-    if (isLastMoved) return 4.0;
-    if (isSelectable) return 3.0;
-    if (isLegal) return 3.0;
-    if (isTopOfStack) return 2.5;
-    if (isInStack) return 1.5;
-    return 1.5;
-  }
-
-  List<BoxShadow>? _getBoxShadow(
-    bool isLegal,
-    bool isTopOfStack,
-    Color color,
-    bool isSelectable,
-    bool isLastMoved,
-  ) {
-    if (isLastMoved) {
-      return [
-        BoxShadow(
-          color: Colors.yellow.withValues(alpha: 0.6),
-          blurRadius: 16,
-          spreadRadius: 6,
-        ),
-        BoxShadow(
-          color: color.withValues(alpha: 0.3),
-          blurRadius: 8,
-          spreadRadius: 2,
-        ),
-      ];
-    }
-    if (isSelectable) {
-      return [
-        BoxShadow(
-          color: Colors.white.withValues(alpha: 0.5),
-          blurRadius: 12,
-          spreadRadius: 4,
-        ),
-        BoxShadow(
-          color: color.withValues(alpha: 0.4),
-          blurRadius: 8,
-          spreadRadius: 2,
-        ),
-      ];
-    }
-    if (isLegal) {
-      return [
-        BoxShadow(
-          color: color.withValues(alpha: 0.7),
-          blurRadius: 6,
-          spreadRadius: 2,
-        ),
-      ];
-    }
-    if (isTopOfStack) {
-      return [
-        BoxShadow(
-          color: Colors.black26,
-          blurRadius: 4,
-          offset: const Offset(0, 2),
-        ),
-      ];
-    }
-    return null;
-  }
-
-  Offset _calculateStackOffset(
-    LudoPiece piece,
-    List<LudoPiece> allPieces,
-    double radius,
-  ) {
-    final piecesAtSamePosition = allPieces
-        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
+  bool get _isTop {
+    final peers = widget.allPieces
+        .where((p) => _sameCell(p, widget.piece) && !p.isHome && !p.isFinished)
         .toList();
-
-    if (piecesAtSamePosition.length <= 1) {
-      return Offset.zero;
-    }
-
-    final indexInStack = piecesAtSamePosition.indexOf(piece);
-    final totalInStack = piecesAtSamePosition.length;
-
-    // Fan out in a circle
-    final angle = (indexInStack / totalInStack) * 2 * math.pi + (math.pi / 4);
-    final distance = radius * 0.5;
-
-    return Offset(distance * math.cos(angle), distance * math.sin(angle));
+    return peers.length > 1 && peers.last.id == widget.piece.id;
   }
 
-  bool _isAtSamePosition(LudoPiece a, LudoPiece b) {
-    if (a.isHome != b.isHome) return false;
-    if (a.isFinished != b.isFinished) return false;
+  Offset _stackOffset(double radius) {
+    final peers = widget.allPieces
+        .where((p) => _sameCell(p, widget.piece) && !p.isHome && !p.isFinished)
+        .toList();
+    if (peers.length <= 1) return Offset.zero;
+    final idx = peers.indexOf(widget.piece);
+    final total = peers.length;
+    final angle = (idx / total) * 2 * math.pi + math.pi / 4;
+    return Offset(
+      radius * 0.46 * math.cos(angle),
+      radius * 0.46 * math.sin(angle),
+    );
+  }
 
-    if (a.isHome || a.isFinished) {
-      return a.id == b.id;
-    }
-
+  bool _sameCell(LudoPiece a, LudoPiece b) {
+    if (a.isHome != b.isHome || a.isFinished != b.isFinished) return false;
+    if (a.isHome || a.isFinished) return a.id == b.id;
     return a.trackPosition == b.trackPosition && a.playerIndex == b.playerIndex;
   }
 
-  bool _isTopOfStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces
-        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
-        .toList();
+  // ── center resolution ────────────────────────────────────────────
 
-    if (piecesAtSamePosition.length <= 1) return false;
-
-    return piecesAtSamePosition.last == piece;
-  }
-
-  bool _isInStack(LudoPiece piece, List<LudoPiece> allPieces) {
-    final piecesAtSamePosition = allPieces
-        .where((p) => _isAtSamePosition(p, piece) && !p.isHome && !p.isFinished)
-        .toList();
-
-    return piecesAtSamePosition.length > 1;
-  }
-
-  static Offset _resolveCenter(LudoPiece piece, double cell) {
+  static Offset _center(LudoPiece piece, double cell) {
     if (piece.isHome) {
       final origin = kHomeBaseOrigins[piece.playerIndex];
       final slot = kHomeYardSlots[piece.id % 4];
-      final row = origin[0] + slot[0];
-      final col = origin[1] + slot[1];
-      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
+      return Offset(
+        (origin[1] + slot[1] + 0.5) * cell,
+        (origin[0] + slot[0] + 0.5) * cell,
+      );
     }
-
     if (piece.isFinished) {
-      const cornerNudge = [
+      const nudge = [
         Offset(-0.55, -0.55),
         Offset(0.55, -0.55),
         Offset(0.55, 0.55),
         Offset(-0.55, 0.55),
       ];
-      final base = cornerNudge[piece.playerIndex];
-      final siblingIndex = piece.id % 4;
-      final fan = (siblingIndex - 1.5) * 0.12;
-      final row = kCenterCell[0] + base.dy + fan;
-      final col = kCenterCell[1] + base.dx + fan;
-      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
+      final base = nudge[piece.playerIndex];
+      final fan = (piece.id % 4 - 1.5) * 0.12;
+      return Offset(
+        (kCenterCell[1] + base.dx + fan + 0.5) * cell,
+        (kCenterCell[0] + base.dy + fan + 0.5) * cell,
+      );
     }
-
-    final cellCoord = piece.trackPosition < LudoPiece.sharedPathSpan
+    final coord = piece.trackPosition < LudoPiece.sharedPathSpan
         ? kPathCells[globalCellOf(piece.playerIndex, piece.trackPosition)]
         : kHomeStretchCells[piece.playerIndex][piece.trackPosition -
               LudoPiece.sharedPathSpan];
-    return Offset((cellCoord[1] + 0.5) * cell, (cellCoord[0] + 0.5) * cell);
+    return Offset((coord[1] + 0.5) * cell, (coord[0] + 0.5) * cell);
   }
 }
 
-class _LudoBoardPainter extends CustomPainter {
-  _LudoBoardPainter({required this.theme, required this.players});
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat 2D token body  – NO shadows, NO gradients
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TokenBody extends StatelessWidget {
+  const _TokenBody({
+    required this.color,
+    required this.isLegal,
+    required this.isLastMoved,
+    required this.inStack,
+    required this.isTop,
+    required this.pieceLabel,
+  });
+
+  final Color color;
+  final bool isLegal;
+  final bool isLastMoved;
+  final bool inStack;
+  final bool isTop;
+  final String pieceLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    // Outline colour
+    final outlineColor = isLastMoved
+        ? Colors.amber.shade700
+        : isLegal
+        ? Colors.white
+        : Colors.black.withValues(alpha: 0.35);
+
+    final outlineWidth = isLastMoved || isLegal ? 2.5 : 1.5;
+
+    return CustomPaint(
+      painter: _FlatTokenPainter(
+        fill: color,
+        outlineColor: outlineColor,
+        outlineWidth: outlineWidth,
+        isLegal: isLegal,
+        isLastMoved: isLastMoved,
+        label: inStack ? pieceLabel : null,
+      ),
+    );
+  }
+}
+
+/// Draws the 2D flat Ludo token:
+///  - Filled circle in [fill] colour
+///  - Thin white inner ring (classic Ludo look, flat version)
+///  - Coloured centre dot
+///  - Optional piece number label when stacked
+///  - Dashed outline when legal (drawn as a solid contrasting ring instead
+///    of actual dashes for performance)
+class _FlatTokenPainter extends CustomPainter {
+  _FlatTokenPainter({
+    required this.fill,
+    required this.outlineColor,
+    required this.outlineWidth,
+    required this.isLegal,
+    required this.isLastMoved,
+    this.label,
+  });
+
+  final Color fill;
+  final Color outlineColor;
+  final double outlineWidth;
+  final bool isLegal;
+  final bool isLastMoved;
+  final String? label;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = math.min(cx, cy);
+
+    // ── outer disc ──────────────────────────────────────────────
+    canvas.drawCircle(Offset(cx, cy), r, Paint()..color = fill);
+
+    // ── outline ring ────────────────────────────────────────────
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r - outlineWidth / 2,
+      Paint()
+        ..color = outlineColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = outlineWidth,
+    );
+
+    // ── inner white ring ────────────────────────────────────────
+    final innerR = r * 0.62;
+    canvas.drawCircle(
+      Offset(cx, cy),
+      innerR,
+      Paint()..color = Colors.white.withValues(alpha: 0.9),
+    );
+
+    // ── centre dot in fill colour ────────────────────────────────
+    canvas.drawCircle(Offset(cx, cy), r * 0.28, Paint()..color = fill);
+
+    // ── label (piece number) when stacked ────────────────────────
+    if (label != null) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: TextStyle(
+            color: fill,
+            fontSize: r * 0.52,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
+    }
+
+    // ── last-moved amber tick mark ───────────────────────────────
+    if (isLastMoved) {
+      canvas.drawCircle(
+        Offset(cx, cy),
+        r - 1,
+        Paint()
+          ..color = Colors.amber.shade600
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FlatTokenPainter old) =>
+      old.fill != fill ||
+      old.outlineColor != outlineColor ||
+      old.isLegal != isLegal ||
+      old.isLastMoved != isLastMoved ||
+      old.label != label;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Board painter – flat 2D, supports 2–4 players
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BoardPainter extends CustomPainter {
+  _BoardPainter({required this.theme, required this.players});
 
   final LudoTheme theme;
   final List<LudoPlayer> players;
 
-  static const List<int> _trianglePlayers = [1, 2, 3, 0];
+  // Which player index "owns" each of the 4 board quadrants.
+  // Quadrant order matches kHomeBaseOrigins: TL, TR, BR, BL.
+  static const List<int> _quadrantPlayer = [0, 1, 2, 3];
+
+  // For the centre triangles the mapping is rotated by one position.
+  static const List<int> _trianglePlayer = [1, 2, 3, 0];
 
   @override
   void paint(Canvas canvas, Size size) {
     final cell = size.width / kBoardGridSize;
 
+    // Background
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = theme.boardBackgroundColor,
@@ -566,180 +437,193 @@ class _LudoBoardPainter extends CustomPainter {
     _paintSharedPath(canvas, cell);
     _paintHomeStretches(canvas, cell);
     _paintCenter(canvas, cell);
+    _paintOuterBorder(canvas, size);
   }
 
+  // ── home bases ───────────────────────────────────────────────────
+
   void _paintHomeBases(Canvas canvas, double cell) {
-    for (var p = 0; p < kHomeBaseOrigins.length; p++) {
-      if (p >= players.length) continue;
-      final origin = kHomeBaseOrigins[p];
+    for (var q = 0; q < 4; q++) {
+      final playerIdx = _quadrantPlayer[q];
+      final origin = kHomeBaseOrigins[q];
+
+      // If this quadrant has no player in the current game, render it grey.
+      final color = playerIdx < players.length
+          ? players[playerIdx].color
+          : Colors.grey.shade300;
+
       final outer = Rect.fromLTWH(
         origin[1] * cell,
         origin[0] * cell,
         cell * 6,
         cell * 6,
       );
-      
-      // Draw outer border with partition effect
-      final borderPaint = Paint()
-        ..color = theme.homeBorderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-      canvas.drawRect(outer, borderPaint);
 
-      // Fill home base with translucent color
+      // Fill
+      canvas.drawRect(outer, Paint()..color = color.withValues(alpha: 0.15));
+
+      // Border
       canvas.drawRect(
         outer,
-        Paint()..color = players[p].color.withValues(alpha: 0.15),
+        Paint()
+          ..color = color.withValues(
+            alpha: playerIdx < players.length ? 0.8 : 0.3,
+          )
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0,
       );
 
-      // Draw partition lines (4 quadrants for each piece)
-      final partitionPaint = Paint()
-        ..color = theme.homePartitionColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0;
-
-      // Vertical and horizontal partition lines
-      final centerX = (origin[1] + 3) * cell;
-      final centerY = (origin[0] + 3) * cell;
-      
-      // Vertical line
-      canvas.drawLine(
-        Offset(centerX, origin[0] * cell),
-        Offset(centerX, (origin[0] + 6) * cell),
-        partitionPaint,
-      );
-      
-      // Horizontal line
-      canvas.drawLine(
-        Offset(origin[1] * cell, centerY),
-        Offset((origin[1] + 6) * cell, centerY),
-        partitionPaint,
-      );
-
-      // Draw individual piece slots with subtle borders
-      for (var slot in kHomeYardSlots) {
-        final row = origin[0] + slot[0];
-        final col = origin[1] + slot[1];
-        final slotRect = Rect.fromLTWH(
-          col * cell + 1,
-          row * cell + 1,
-          cell - 2,
-          cell - 2,
-        );
-        canvas.drawRect(
-          slotRect,
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.3)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.5,
-        );
+      if (playerIdx >= players.length) {
+        continue; // No inner content for empty quadrant
       }
 
-      // Draw inner yard
+      // Inner yard
       final yard = Rect.fromLTWH(
         (origin[1] + 1) * cell,
         (origin[0] + 1) * cell,
         cell * 4,
         cell * 4,
       );
-      canvas.drawRect(yard, Paint()..color = Colors.white.withValues(alpha: 0.4));
+      canvas.drawRect(
+        yard,
+        Paint()..color = Colors.white.withValues(alpha: 0.6),
+      );
       canvas.drawRect(
         yard,
         Paint()
-          ..color = theme.homeBorderColor
+          ..color = color.withValues(alpha: 0.4)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0,
       );
+
+      // Slot circles
+      for (final slot in kHomeYardSlots) {
+        final cx = (origin[1] + slot[1] + 0.5) * cell;
+        final cy = (origin[0] + slot[0] + 0.5) * cell;
+        final r = cell * 0.36;
+        // Slot fill
+        canvas.drawCircle(
+          Offset(cx, cy),
+          r,
+          Paint()..color = color.withValues(alpha: 0.18),
+        );
+        // Slot border
+        canvas.drawCircle(
+          Offset(cx, cy),
+          r,
+          Paint()
+            ..color = color.withValues(alpha: 0.55)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2,
+        );
+      }
     }
   }
+
+  // ── shared path ──────────────────────────────────────────────────
 
   void _paintSharedPath(Canvas canvas, double cell) {
     for (var i = 0; i < kPathCells.length; i++) {
-      final coord = kPathCells[i];
-      final rect = Rect.fromLTWH(coord[1] * cell, coord[0] * cell, cell, cell);
-      final isSafe = kSafeIndices.contains(i);
+      final c = kPathCells[i];
+      final rect = Rect.fromLTWH(c[1] * cell, c[0] * cell, cell, cell);
+      final safe = kSafeIndices.contains(i);
       canvas.drawRect(
         rect,
-        Paint()..color = isSafe ? theme.safeCellColor : theme.pathCellColor,
+        Paint()..color = safe ? theme.safeCellColor : theme.pathCellColor,
       );
-      _strokeRect(canvas, rect, 1);
-      if (isSafe) {
-        _drawStar(canvas, rect.center, cell * 0.28, theme.starIconColor);
-      }
+      _grid(canvas, rect);
+      if (safe) _star(canvas, rect.center, cell * 0.24, theme.starIconColor);
     }
   }
+
+  // ── home stretches ───────────────────────────────────────────────
 
   void _paintHomeStretches(Canvas canvas, double cell) {
-    for (var p = 0; p < kHomeStretchCells.length; p++) {
-      if (p >= players.length) continue;
+    for (var p = 0; p < players.length; p++) {
       final color = players[p].color;
-      for (final coord in kHomeStretchCells[p]) {
-        final rect = Rect.fromLTWH(
-          coord[1] * cell,
-          coord[0] * cell,
-          cell,
-          cell,
-        );
-        canvas.drawRect(rect, Paint()..color = color.withValues(alpha: 0.45));
-        _strokeRect(canvas, rect, 1);
+      final cells = kHomeStretchCells[p];
+      for (var i = 0; i < cells.length; i++) {
+        final c = cells[i];
+        final rect = Rect.fromLTWH(c[1] * cell, c[0] * cell, cell, cell);
+        // Flat gradient-free fill: blend from light to solid
+        final alpha = 0.28 + (i / cells.length) * 0.38;
+        canvas.drawRect(rect, Paint()..color = color.withValues(alpha: alpha));
+        _grid(canvas, rect);
       }
     }
   }
 
-  void _paintCenter(Canvas canvas, double cell) {
-    final centerRect = Rect.fromLTWH(6 * cell, 6 * cell, cell * 3, cell * 3);
-    canvas.drawRect(centerRect, Paint()..color = theme.centerCellColor);
+  // ── centre ───────────────────────────────────────────────────────
 
-    final c = centerRect.center;
-    final triangleCorners = [
-      [centerRect.topLeft, centerRect.topRight],
-      [centerRect.topRight, centerRect.bottomRight],
-      [centerRect.bottomRight, centerRect.bottomLeft],
-      [centerRect.bottomLeft, centerRect.topLeft],
+  void _paintCenter(Canvas canvas, double cell) {
+    final rect = Rect.fromLTWH(6 * cell, 6 * cell, 3 * cell, 3 * cell);
+    canvas.drawRect(rect, Paint()..color = Colors.white);
+
+    final c = rect.center;
+    final corners = [
+      [rect.topLeft, rect.topRight],
+      [rect.topRight, rect.bottomRight],
+      [rect.bottomRight, rect.bottomLeft],
+      [rect.bottomLeft, rect.topLeft],
     ];
 
     for (var i = 0; i < 4; i++) {
-      final playerIndex = _trianglePlayers[i];
-      if (playerIndex >= players.length) continue;
-      final corners = triangleCorners[i];
+      final pi = _trianglePlayer[i];
+      // If not enough players, render grey triangle.
+      final color = pi < players.length
+          ? players[pi].color
+          : Colors.grey.shade200;
+      final pts = corners[i];
       final path = Path()
         ..moveTo(c.dx, c.dy)
-        ..lineTo(corners[0].dx, corners[0].dy)
-        ..lineTo(corners[1].dx, corners[1].dy)
+        ..lineTo(pts[0].dx, pts[0].dy)
+        ..lineTo(pts[1].dx, pts[1].dy)
         ..close();
-      canvas.drawPath(
-        path,
-        Paint()..color = players[playerIndex].color.withValues(alpha: 0.55),
-      );
+      canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.65));
     }
 
-    _strokeRect(canvas, centerRect, 1.5);
+    // Flat centre star
+    _star(canvas, c, cell * 0.42, Colors.white.withValues(alpha: 0.85));
+    _grid(canvas, rect, strokeWidth: 1.5);
   }
 
-  void _strokeRect(Canvas canvas, Rect rect, double width) {
+  // ── outer board border ───────────────────────────────────────────
+
+  void _paintOuterBorder(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..color = theme.gridLineColor.withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+  }
+
+  // ── helpers ──────────────────────────────────────────────────────
+
+  void _grid(Canvas canvas, Rect rect, {double strokeWidth = 0.8}) {
     canvas.drawRect(
       rect,
       Paint()
         ..color = theme.gridLineColor
         ..style = PaintingStyle.stroke
-        ..strokeWidth = width,
+        ..strokeWidth = strokeWidth,
     );
   }
 
-  void _drawStar(Canvas canvas, Offset center, double radius, Color color) {
-    const points = 5;
+  void _star(Canvas canvas, Offset center, double radius, Color color) {
     final path = Path();
-    for (var i = 0; i < points * 2; i++) {
+    for (var i = 0; i < 10; i++) {
       final r = i.isEven ? radius : radius * 0.45;
-      final angle = (i * math.pi / points) - math.pi / 2;
-      final point = Offset(
+      final angle = (i * math.pi / 5) - math.pi / 2;
+      final pt = Offset(
         center.dx + r * math.cos(angle),
         center.dy + r * math.sin(angle),
       );
       if (i == 0) {
-        path.moveTo(point.dx, point.dy);
+        path.moveTo(pt.dx, pt.dy);
       } else {
-        path.lineTo(point.dx, point.dy);
+        path.lineTo(pt.dx, pt.dy);
       }
     }
     path.close();
@@ -747,7 +631,6 @@ class _LudoBoardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _LudoBoardPainter oldDelegate) {
-    return oldDelegate.theme != theme || oldDelegate.players != players;
-  }
+  bool shouldRepaint(covariant _BoardPainter old) =>
+      old.theme != theme || old.players != players;
 }

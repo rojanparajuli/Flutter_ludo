@@ -142,6 +142,7 @@ final controller = LudoController(
 ```
 lib/
   constants/   fixed board geometry (grid, path, safe cells, home stretches)
+  service/     AudioService
   models/      LudoPlayer, LudoPiece, LudoDiceRules, LudoLegalMove, LudoGameState
   rules/       move validation, capture rules, win conditions (pure functions)
   engine/      LudoEngine — the pure, stateless turn-flow engine

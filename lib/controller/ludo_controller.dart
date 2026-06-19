@@ -1,44 +1,21 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_ludo/service/audio_service.dart';
+import 'package:flutter/material.dart';
 
 import '../engine/ludo_engine.dart';
 import '../model/ludo_dice_rules.dart';
 import '../model/ludo_game_state.dart';
 import '../model/ludo_piece.dart';
 import '../model/ludo_player.dart';
+import '../service/audio_service.dart';
 
-/// Fired right after the dice is rolled, with the value (1-6) that came up.
-typedef LudoDiceRolledCallback = void Function(int value);
+typedef LudoDiceRolledCallback    = void Function(int value);
+typedef LudoPieceMovedCallback    = void Function(LudoPiece piece, int from, int to);
+typedef LudoPieceCapturedCallback = void Function(LudoPiece captured, LudoPiece by);
+typedef LudoTurnChangedCallback   = void Function(int currentPlayerIndex);
+typedef LudoPlayerWonCallback     = void Function(int playerIndex, int place);
+typedef LudoGameFinishedCallback  = void Function(List<int> winnersInOrder);
 
-/// Fired right after a piece finishes moving.
-typedef LudoPieceMovedCallback = void Function(
-  LudoPiece piece,
-  int fromPosition,
-  int toPosition,
-);
-
-/// Fired once per opponent piece captured as a result of a move.
-typedef LudoPieceCapturedCallback = void Function(
-  LudoPiece capturedPiece,
-  LudoPiece byPiece,
-);
-
-/// Fired whenever the active player changes (including automatic passes
-/// when a roll produces no legal moves).
-typedef LudoTurnChangedCallback = void Function(int currentPlayerIndex);
-
-/// Fired the moment a player wins (all 4 pieces finished). [place] is
-/// 1-based (1 = first to finish).
-typedef LudoPlayerWonCallback = void Function(int playerIndex, int place);
-
-/// Fired once the overall game is over. [winnersInOrder] lists every
-/// player index from first to last place.
-typedef LudoGameFinishedCallback = void Function(List<int> winnersInOrder);
-
-/// Owns and mutates all Ludo game state, and is the single entry point
-/// developers should use to drive a game.
 class LudoController extends ChangeNotifier {
   LudoController({
     required List<LudoPlayer> players,
@@ -50,63 +27,58 @@ class LudoController extends ChangeNotifier {
     this.onTurnChanged,
     this.onPlayerWon,
     this.onGameFinished,
-    bool enableAudio = true, // Keep as parameter
+    bool enableAudio = true,
+    this.stepAnimationDuration = const Duration(milliseconds: 180),
   })  : assert(
-          players.length == 4,
-          'flutter_ludo is fixed to exactly 4 players, per the '
-          'specification.',
+          players.length >= 2 && players.length <= 4,
+          'flutter_ludo supports 2 to 4 players.',
         ),
-        assert(
-          diceRules.startAllowedValues.isNotEmpty,
-          'diceRules.startAllowedValues must contain at least one value, '
-          'otherwise no piece could ever leave home.',
-        ),
+        assert(diceRules.startAllowedValues.isNotEmpty),
         _diceRoller = diceRoller ?? _defaultDiceRoller,
         _engine = LudoEngine(diceRules),
-        _audioService = AudioService(enabled: enableAudio),
-        _enableAudio = enableAudio { // Store it as a field
+        _audio = AudioService(enabled: enableAudio) {
     _state = _initialState(players);
   }
 
   static int _defaultDiceRoller() => 1 + Random().nextInt(6);
 
-  /// Configurable dice behaviour.
   final LudoDiceRules diceRules;
+  final Duration stepAnimationDuration;
 
   final int Function() _diceRoller;
   final LudoEngine _engine;
-  final AudioService _audioService;
-  
-  // Store enableAudio as a field
-  bool _enableAudio;
+  final AudioService _audio;
 
-  final LudoDiceRolledCallback? onDiceRolled;
-  final LudoPieceMovedCallback? onPieceMoved;
+  final LudoDiceRolledCallback?    onDiceRolled;
+  final LudoPieceMovedCallback?    onPieceMoved;
   final LudoPieceCapturedCallback? onPieceCaptured;
-  final LudoTurnChangedCallback? onTurnChanged;
-  final LudoPlayerWonCallback? onPlayerWon;
-  final LudoGameFinishedCallback? onGameFinished;
+  final LudoTurnChangedCallback?   onTurnChanged;
+  final LudoPlayerWonCallback?     onPlayerWon;
+  final LudoGameFinishedCallback?  onGameFinished;
 
   late LudoGameState _state;
 
-  /// Current, immutable snapshot of the whole game.
-  LudoGameState get state => _state;
+  LudoPiece? _animatingPiece;
+  int?       _animatingStep;
+  bool       _isAnimating = false;
 
-  /// Getter for audio enabled state
-  bool get enableAudio => _enableAudio;
+  LudoGameState get state          => _state;
+  bool          get enableAudio    => _audio.enabled;
+  bool          get isAnimating    => _isAnimating;
+  LudoPiece?    get animatingPiece => _animatingPiece;
 
-  /// Toggle audio on/off
   void toggleAudio(bool enabled) {
-    _enableAudio = enabled;
-    _audioService.enabled = enabled;
+    _audio.enabled = enabled;
     notifyListeners();
   }
 
   static LudoGameState _initialState(List<LudoPlayer> players) {
-    final pieces = <LudoPiece>[
-      for (var player = 0; player < players.length; player++)
-        for (var local = 0; local < 4; local++)
-          LudoPiece(id: player * 4 + local, playerIndex: player),
+    // Only create pieces for the players that are actually in the game.
+    // Unused home quadrants (indices >= players.length) are left empty.
+    final pieces = [
+      for (var p = 0; p < players.length; p++)
+        for (var l = 0; l < 4; l++)
+          LudoPiece(id: p * 4 + l, playerIndex: p),
     ];
     return LudoGameState(
       players: players,
@@ -117,98 +89,110 @@ class LudoController extends ChangeNotifier {
     );
   }
 
-  /// Rolls the dice (1-6) for the current player and computes the legal
-  /// moves available with that value. If there are no legal moves, the
-  /// turn is passed automatically and [onTurnChanged] fires.
-  ///
-  /// Returns the value rolled.
   int rollDice() {
-    if (_state.isFinished) {
-      throw StateError('Cannot roll dice: the game has already finished.');
-    }
+    if (_state.isFinished) throw StateError('Game already finished.');
     if (_state.phase == LudoTurnPhase.awaitingPieceSelection) {
-      throw StateError('Cannot roll dice: select a piece for the current '
-          'roll first.');
+      throw StateError('Select a piece first.');
     }
+    if (_isAnimating) throw StateError('Animation in progress.');
 
     final value = _diceRoller();
-    
-    // Play dice roll sound
-    _audioService.playDiceRoll();
-    
+    _audio.playDiceRoll();
     onDiceRolled?.call(value);
 
     final result = _engine.roll(_state, value);
     _state = result.state;
 
-    // Clear last moved piece when new turn starts
     if (result.passed) {
-      _state = _state.copyWith(
-        clearLastMovedPiece: true,
-      );
+      _state = _state.copyWith(clearLastMovedPiece: true);
       onTurnChanged?.call(_state.currentPlayerIndex);
+      notifyListeners();
+      return value;
     }
 
     notifyListeners();
+
+    if (_state.legalMoves.length == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_state.phase == LudoTurnPhase.awaitingPieceSelection &&
+            _state.legalMoves.length == 1) {
+          selectPiece(_state.legalMoves.first.pieceId);
+        }
+      });
+    }
+
     return value;
   }
 
-  /// Moves the piece with [pieceId]. [pieceId] must be one of
-  /// `state.legalMoves` for the current roll, or this throws.
-  void selectPiece(int pieceId) {
+  Future<void> selectPiece(int pieceId) async {
     if (_state.phase != LudoTurnPhase.awaitingPieceSelection) {
-      throw StateError('Cannot select a piece: roll the dice first, or the '
-          'game has already finished.');
+      throw StateError('Roll the dice first.');
     }
-    final isLegal = _state.legalMoves.any((m) => m.pieceId == pieceId);
-    if (!isLegal) {
-      throw ArgumentError(
-          'Piece $pieceId is not a legal move for the current roll.');
+    if (_isAnimating) return;
+
+    final move = _state.legalMoves.firstWhere(
+      (m) => m.pieceId == pieceId,
+      orElse: () => throw ArgumentError('Piece $pieceId is not a legal move.'),
+    );
+
+    final piece = _state.pieces.firstWhere((p) => p.id == pieceId);
+    final steps = move.toPosition - move.fromPosition;
+
+    _isAnimating    = true;
+    _animatingPiece = piece;
+
+    for (var step = 1; step <= steps; step++) {
+      _animatingStep  = piece.trackPosition + step;
+      _animatingPiece = piece.copyWith(trackPosition: _animatingStep!);
+      notifyListeners();
+      await _audio.playPieceMove();
+      await Future.delayed(stepAnimationDuration);
     }
+
+    _animatingPiece = null;
+    _animatingStep  = null;
+    _isAnimating    = false;
 
     final result = _engine.move(_state, pieceId);
-    _state = result.state;
+    _state = result.state.copyWith(lastMovedPiece: result.movedPiece);
 
-    // Track the last moved piece for visual feedback
-    _state = _state.copyWith(
-      lastMovedPiece: result.movedPiece,
-    );
+    onPieceMoved?.call(result.movedPiece, result.fromPosition, result.toPosition);
 
-    onPieceMoved?.call(
-      result.movedPiece,
-      result.fromPosition,
-      result.toPosition,
-    );
     for (final captured in result.capturedPieces) {
+      _audio.playCapture();
       onPieceCaptured?.call(captured, result.movedPiece);
     }
+
     if (result.playerWon) {
+      _audio.playWin();
       final place = _state.winners.indexOf(result.movedPiece.playerIndex) + 1;
       onPlayerWon?.call(result.movedPiece.playerIndex, place);
+    } else if (result.movedPiece.isFinished) {
+      _audio.playPieceHome();
     }
+
     if (result.gameFinished) {
+      _audio.playGameOver();
       onGameFinished?.call(List.unmodifiable(_state.winners));
     } else if (result.turnPassed) {
-      // Clear last moved piece when turn passes
-      _state = _state.copyWith(
-        clearLastMovedPiece: true,
-      );
+      _state = _state.copyWith(clearLastMovedPiece: true);
       onTurnChanged?.call(_state.currentPlayerIndex);
     }
 
     notifyListeners();
   }
 
-  /// Resets the game to a fresh state, keeping the same players and rules.
   void reset() {
+    _isAnimating    = false;
+    _animatingPiece = null;
+    _animatingStep  = null;
     _state = _initialState(_state.players);
     notifyListeners();
   }
 
-  /// Dispose resources
   @override
   void dispose() {
-    _audioService.dispose();
+    _audio.dispose();
     super.dispose();
   }
 }

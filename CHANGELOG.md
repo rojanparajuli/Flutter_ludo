@@ -1,3 +1,21 @@
+## 0.0.8
+- Added 2–4 player support (previously fixed at 4 players).
+- Added `LudoSetup` widget with an interactive player-count selection screen (2, 3, or 4 players) before game start.
+- Redesigned all UI to flat 2D style — removed all shadows, gradients, and 3D effects from tokens, board, and dice.
+- Tokens now render as flat filled circles with a white inner ring and centre dot (classic physical Ludo look).
+- Dice face replaced with real pip-dot grid instead of a text number.
+- Added step-by-step piece movement animation — pieces now travel through each cell individually instead of jumping to the destination.
+- Added bounce animation on each step arrival for tactile feedback.
+- Auto-moves the piece automatically when only one legal move exists after rolling.
+- Fixed stacked piece selection in safe zones — current player's pieces always render on top and receive tap events correctly even when opponents share the same cell.
+- Wired all audio events: dice roll, per-step move tick, capture, piece reaching home stretch, player win, and game over.
+- Fixed `AudioService` to use one `AudioPlayer` per sound type so concurrent sounds no longer cancel each other.
+- Added animated turn pill that cross-fades on turn change with active player colour.
+- Added player avatar row with colour chips and place medals (🥇🥈🥉) for finished players.
+- Added game-over overlay with winner podium and Play Again button.
+- Empty board quadrants (in 2–3 player games) render in grey with no piece slots.
+- Fixed `steps` compile error — movement step count now derived from `move.toPosition - move.fromPosition`.
+
 ## 0.0.7
 - Added partition borders for home bases to clearly show individual piece starting positions.
 - Added movement trail effect for visual feedback when pieces move.
