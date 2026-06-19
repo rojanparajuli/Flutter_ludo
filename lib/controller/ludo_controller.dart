@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_ludo/service/audio_service.dart';
 
 import '../engine/ludo_engine.dart';
 import '../model/ludo_dice_rules.dart';
@@ -38,24 +39,6 @@ typedef LudoGameFinishedCallback = void Function(List<int> winnersInOrder);
 
 /// Owns and mutates all Ludo game state, and is the single entry point
 /// developers should use to drive a game.
-///
-/// Internal state should never be mutated directly — use [rollDice] and
-/// [selectPiece]. Listen to a [LudoController] like any other
-/// [ChangeNotifier] (e.g. via `ListenableBuilder`), or rely on the
-/// [LudoGame] widget, which already does this for you.
-///
-/// ```dart
-/// final controller = LudoController(
-///   players: const [
-///     LudoPlayer(name: 'Red', color: Colors.red),
-///     LudoPlayer(name: 'Green', color: Colors.green),
-///     LudoPlayer(name: 'Yellow', color: Colors.yellow),
-///     LudoPlayer(name: 'Blue', color: Colors.blue),
-///   ],
-///   diceRules: const LudoDiceRules(startAllowedValues: [6]),
-///   onPlayerWon: (playerIndex, place) { ... },
-/// );
-/// ```
 class LudoController extends ChangeNotifier {
   LudoController({
     required List<LudoPlayer> players,
@@ -67,6 +50,7 @@ class LudoController extends ChangeNotifier {
     this.onTurnChanged,
     this.onPlayerWon,
     this.onGameFinished,
+    bool enableAudio = true, // Keep as parameter
   })  : assert(
           players.length == 4,
           'flutter_ludo is fixed to exactly 4 players, per the '
@@ -78,18 +62,23 @@ class LudoController extends ChangeNotifier {
           'otherwise no piece could ever leave home.',
         ),
         _diceRoller = diceRoller ?? _defaultDiceRoller,
-        _engine = LudoEngine(diceRules) {
+        _engine = LudoEngine(diceRules),
+        _audioService = AudioService(enabled: enableAudio),
+        _enableAudio = enableAudio { // Store it as a field
     _state = _initialState(players);
   }
 
   static int _defaultDiceRoller() => 1 + Random().nextInt(6);
 
-  /// Configurable dice behaviour. Board geometry and capture/win rules are
-  /// fixed and not exposed here.
+  /// Configurable dice behaviour.
   final LudoDiceRules diceRules;
 
   final int Function() _diceRoller;
   final LudoEngine _engine;
+  final AudioService _audioService;
+  
+  // Store enableAudio as a field
+  bool _enableAudio;
 
   final LudoDiceRolledCallback? onDiceRolled;
   final LudoPieceMovedCallback? onPieceMoved;
@@ -103,6 +92,16 @@ class LudoController extends ChangeNotifier {
   /// Current, immutable snapshot of the whole game.
   LudoGameState get state => _state;
 
+  /// Getter for audio enabled state
+  bool get enableAudio => _enableAudio;
+
+  /// Toggle audio on/off
+  void toggleAudio(bool enabled) {
+    _enableAudio = enabled;
+    _audioService.enabled = enabled;
+    notifyListeners();
+  }
+
   static LudoGameState _initialState(List<LudoPlayer> players) {
     final pieces = <LudoPiece>[
       for (var player = 0; player < players.length; player++)
@@ -114,6 +113,7 @@ class LudoController extends ChangeNotifier {
       pieces: pieces,
       currentPlayerIndex: 0,
       phase: LudoTurnPhase.awaitingRoll,
+      lastMovedPiece: null,
     );
   }
 
@@ -132,12 +132,20 @@ class LudoController extends ChangeNotifier {
     }
 
     final value = _diceRoller();
+    
+    // Play dice roll sound
+    _audioService.playDiceRoll();
+    
     onDiceRolled?.call(value);
 
     final result = _engine.roll(_state, value);
     _state = result.state;
 
+    // Clear last moved piece when new turn starts
     if (result.passed) {
+      _state = _state.copyWith(
+        clearLastMovedPiece: true,
+      );
       onTurnChanged?.call(_state.currentPlayerIndex);
     }
 
@@ -161,6 +169,11 @@ class LudoController extends ChangeNotifier {
     final result = _engine.move(_state, pieceId);
     _state = result.state;
 
+    // Track the last moved piece for visual feedback
+    _state = _state.copyWith(
+      lastMovedPiece: result.movedPiece,
+    );
+
     onPieceMoved?.call(
       result.movedPiece,
       result.fromPosition,
@@ -176,6 +189,10 @@ class LudoController extends ChangeNotifier {
     if (result.gameFinished) {
       onGameFinished?.call(List.unmodifiable(_state.winners));
     } else if (result.turnPassed) {
+      // Clear last moved piece when turn passes
+      _state = _state.copyWith(
+        clearLastMovedPiece: true,
+      );
       onTurnChanged?.call(_state.currentPlayerIndex);
     }
 
@@ -186,5 +203,12 @@ class LudoController extends ChangeNotifier {
   void reset() {
     _state = _initialState(_state.players);
     notifyListeners();
+  }
+
+  /// Dispose resources
+  @override
+  void dispose() {
+    _audioService.dispose();
+    super.dispose();
   }
 }

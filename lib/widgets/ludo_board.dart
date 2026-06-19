@@ -47,6 +47,14 @@ class LudoBoard extends StatelessWidget {
                   players: state.players,
                 ),
               ),
+              // Movement trail overlay
+              if (state.lastMovedPiece != null)
+                _MovementTrail(
+                  piece: state.lastMovedPiece!,
+                  cell: cell,
+                  color: state.players[state.lastMovedPiece!.playerIndex].color,
+                  theme: theme,
+                ),
               for (final piece in state.pieces)
                 _PositionedPiece(
                   key: ValueKey(piece.id),
@@ -56,6 +64,7 @@ class LudoBoard extends StatelessWidget {
                   isLegal: legalPieceIds.contains(piece.id),
                   onTap: () => _handlePieceTap(context, piece, state),
                   allPieces: state.pieces,
+                  isLastMoved: state.lastMovedPiece?.id == piece.id,
                 ),
             ],
           ),
@@ -117,6 +126,86 @@ class LudoBoard extends StatelessWidget {
   }
 }
 
+// New widget for movement trail effect
+class _MovementTrail extends StatelessWidget {
+  const _MovementTrail({
+    required this.piece,
+    required this.cell,
+    required this.color,
+    required this.theme,
+  });
+
+  final LudoPiece piece;
+  final double cell;
+  final Color color;
+  final LudoTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final center = _resolveCenter(piece, cell);
+    final radius = cell * 0.34;
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+      left: center.dx - radius * 1.2,
+      top: center.dy - radius * 1.2,
+      width: radius * 2.4,
+      height: radius * 2.4,
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 1.0],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.2),
+              blurRadius: 20,
+              spreadRadius: 5,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Offset _resolveCenter(LudoPiece piece, double cell) {
+    if (piece.isHome) {
+      final origin = kHomeBaseOrigins[piece.playerIndex];
+      final slot = kHomeYardSlots[piece.id % 4];
+      final row = origin[0] + slot[0];
+      final col = origin[1] + slot[1];
+      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
+    }
+
+    if (piece.isFinished) {
+      const cornerNudge = [
+        Offset(-0.55, -0.55),
+        Offset(0.55, -0.55),
+        Offset(0.55, 0.55),
+        Offset(-0.55, 0.55),
+      ];
+      final base = cornerNudge[piece.playerIndex];
+      final siblingIndex = piece.id % 4;
+      final fan = (siblingIndex - 1.5) * 0.12;
+      final row = kCenterCell[0] + base.dy + fan;
+      final col = kCenterCell[1] + base.dx + fan;
+      return Offset((col + 0.5) * cell, (row + 0.5) * cell);
+    }
+
+    final cellCoord = piece.trackPosition < LudoPiece.sharedPathSpan
+        ? kPathCells[globalCellOf(piece.playerIndex, piece.trackPosition)]
+        : kHomeStretchCells[piece.playerIndex][piece.trackPosition -
+              LudoPiece.sharedPathSpan];
+    return Offset((cellCoord[1] + 0.5) * cell, (cellCoord[0] + 0.5) * cell);
+  }
+}
+
 class _PositionedPiece extends StatelessWidget {
   const _PositionedPiece({
     super.key,
@@ -126,6 +215,7 @@ class _PositionedPiece extends StatelessWidget {
     required this.isLegal,
     required this.onTap,
     required this.allPieces,
+    this.isLastMoved = false,
   });
 
   final LudoPiece piece;
@@ -134,6 +224,7 @@ class _PositionedPiece extends StatelessWidget {
   final bool isLegal;
   final VoidCallback onTap;
   final List<LudoPiece> allPieces;
+  final bool isLastMoved;
 
   @override
   Widget build(BuildContext context) {
@@ -154,12 +245,6 @@ class _PositionedPiece extends StatelessWidget {
       height: radius * 2,
       child: GestureDetector(
         onTap: isLegal ? onTap : null,
-        // Pieces that can't be tapped (e.g. another player's piece sitting
-        // on a safe cell on top of one of your own) must not swallow the
-        // tap. Only claim the hit region when this piece is actually
-        // actionable; otherwise let the tap pass through to whatever piece
-        // is underneath it so a blocked piece never prevents tapping the
-        // piece it's blocking.
         behavior: isLegal
             ? HitTestBehavior.opaque
             : HitTestBehavior.translucent,
@@ -173,12 +258,14 @@ class _PositionedPiece extends StatelessWidget {
                 isTopOfStack,
                 isInStack,
                 isSelectable,
+                isLastMoved,
               ),
               width: _getBorderWidth(
                 isLegal,
                 isTopOfStack,
                 isInStack,
                 isSelectable,
+                isLastMoved,
               ),
             ),
             boxShadow: _getBoxShadow(
@@ -186,6 +273,7 @@ class _PositionedPiece extends StatelessWidget {
               isTopOfStack,
               color,
               isSelectable,
+              isLastMoved,
             ),
           ),
           child: Stack(
@@ -210,9 +298,29 @@ class _PositionedPiece extends StatelessWidget {
                     ),
                   ),
                 ),
+              // Last moved indicator
+              if (isLastMoved)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.yellow,
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.yellow.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               // Stack position indicator
               ?_buildStackIndicator(isInStack, isTopOfStack, isSelectable),
-              // Piece number for identification (only for current player's pieces)
+              // Piece number for identification
               if (isInStack)
                 Center(
                   child: Text(
@@ -272,7 +380,9 @@ class _PositionedPiece extends StatelessWidget {
     bool isTopOfStack,
     bool isInStack,
     bool isSelectable,
+    bool isLastMoved,
   ) {
+    if (isLastMoved) return Colors.yellow;
     if (isSelectable) return Colors.white;
     if (isLegal) return Colors.white;
     if (isTopOfStack) return Colors.white70;
@@ -285,7 +395,9 @@ class _PositionedPiece extends StatelessWidget {
     bool isTopOfStack,
     bool isInStack,
     bool isSelectable,
+    bool isLastMoved,
   ) {
+    if (isLastMoved) return 4.0;
     if (isSelectable) return 3.0;
     if (isLegal) return 3.0;
     if (isTopOfStack) return 2.5;
@@ -298,7 +410,22 @@ class _PositionedPiece extends StatelessWidget {
     bool isTopOfStack,
     Color color,
     bool isSelectable,
+    bool isLastMoved,
   ) {
+    if (isLastMoved) {
+      return [
+        BoxShadow(
+          color: Colors.yellow.withValues(alpha: 0.6),
+          blurRadius: 16,
+          spreadRadius: 6,
+        ),
+        BoxShadow(
+          color: color.withValues(alpha: 0.3),
+          blurRadius: 8,
+          spreadRadius: 2,
+        ),
+      ];
+    }
     if (isSelectable) {
       return [
         BoxShadow(
@@ -451,20 +578,78 @@ class _LudoBoardPainter extends CustomPainter {
         cell * 6,
         cell * 6,
       );
+      
+      // Draw outer border with partition effect
+      final borderPaint = Paint()
+        ..color = theme.homeBorderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawRect(outer, borderPaint);
+
+      // Fill home base with translucent color
       canvas.drawRect(
         outer,
-        Paint()..color = players[p].color.withValues(alpha: 0.20),
+        Paint()..color = players[p].color.withValues(alpha: 0.15),
       );
-      _strokeRect(canvas, outer, 1.5);
 
+      // Draw partition lines (4 quadrants for each piece)
+      final partitionPaint = Paint()
+        ..color = theme.homePartitionColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+
+      // Vertical and horizontal partition lines
+      final centerX = (origin[1] + 3) * cell;
+      final centerY = (origin[0] + 3) * cell;
+      
+      // Vertical line
+      canvas.drawLine(
+        Offset(centerX, origin[0] * cell),
+        Offset(centerX, (origin[0] + 6) * cell),
+        partitionPaint,
+      );
+      
+      // Horizontal line
+      canvas.drawLine(
+        Offset(origin[1] * cell, centerY),
+        Offset((origin[1] + 6) * cell, centerY),
+        partitionPaint,
+      );
+
+      // Draw individual piece slots with subtle borders
+      for (var slot in kHomeYardSlots) {
+        final row = origin[0] + slot[0];
+        final col = origin[1] + slot[1];
+        final slotRect = Rect.fromLTWH(
+          col * cell + 1,
+          row * cell + 1,
+          cell - 2,
+          cell - 2,
+        );
+        canvas.drawRect(
+          slotRect,
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.3)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.5,
+        );
+      }
+
+      // Draw inner yard
       final yard = Rect.fromLTWH(
         (origin[1] + 1) * cell,
         (origin[0] + 1) * cell,
         cell * 4,
         cell * 4,
       );
-      canvas.drawRect(yard, Paint()..color = Colors.white);
-      _strokeRect(canvas, yard, 1);
+      canvas.drawRect(yard, Paint()..color = Colors.white.withValues(alpha: 0.4));
+      canvas.drawRect(
+        yard,
+        Paint()
+          ..color = theme.homeBorderColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
     }
   }
 

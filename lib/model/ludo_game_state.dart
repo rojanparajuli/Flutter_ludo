@@ -33,6 +33,7 @@ class LudoGameState {
     this.diceValue,
     this.legalMoves = const [],
     this.winners = const [],
+    this.lastMovedPiece,
   });
 
   final List<LudoPlayer> players;
@@ -54,6 +55,9 @@ class LudoGameState {
   /// one remaining player index is appended automatically in last place.
   final List<int> winners;
 
+  /// The piece that was last moved (for visual feedback/highlighting).
+  final LudoPiece? lastMovedPiece;
+
   bool get isFinished => phase == LudoTurnPhase.gameOver;
 
   List<LudoPiece> piecesOf(int playerIndex) =>
@@ -68,6 +72,8 @@ class LudoGameState {
     bool clearDiceValue = false,
     List<LudoLegalMove>? legalMoves,
     List<int>? winners,
+    LudoPiece? lastMovedPiece,
+    bool clearLastMovedPiece = false,
   }) {
     return LudoGameState(
       players: players ?? this.players,
@@ -77,6 +83,9 @@ class LudoGameState {
       diceValue: clearDiceValue ? null : (diceValue ?? this.diceValue),
       legalMoves: legalMoves ?? this.legalMoves,
       winners: winners ?? this.winners,
+      lastMovedPiece: clearLastMovedPiece 
+          ? null 
+          : (lastMovedPiece ?? this.lastMovedPiece),
     );
   }
 }
