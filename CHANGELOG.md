@@ -1,3 +1,21 @@
+## 0.0.9
+- Added **Teams mode (2v2)** — Red+Yellow vs Blue+Green, toggled from the setup screen.
+- Added `LudoTeam` model with `kDefaultTeams` constant and `areTeammates` / `teamOf` helpers.
+- Teammates never capture each other; opponent stacks on non-safe cells are captured together.
+- Team wins when all 8 pieces (both teammates' 4 each) reach the centre.
+- Turn order remains interleaved (Red→Blue→Green→Yellow) in teams mode.
+- Added `onTeamWon` callback to `LudoController` fired when a full team finishes.
+- `LudoGameState` exposes `isTeamsMode`, `winningTeam`, `teamOf`, and `areTeammates` getters.
+- Board painter draws team bracket lines connecting each pair of teammate home bases for instant visual identification.
+- Tokens in a friendly stack show a dashed inner ring to distinguish teammate stacks from opponent stacks.
+- Setup screen shows teams mode toggle (only available with 4 players) and a team preview card.
+- Status bar switches to team chips (two colour dots per chip) in teams mode.
+- Turn pill includes the active player's team name in teams mode.
+- Game-over overlay shows winning team card with amber highlight instead of individual podium in teams mode.
+- Fixed `LudoTeam` const constructor — removed `.length` assert that was invalid in a constant expression.
+- Fixed `isGameFinished` call sites in tests — signature takes `winnersCount int`, not `List<int>`.
+- Fixed missing `flutter_lints` dev dependency in example app `pubspec.yaml`.
+
 ## 0.0.8
 - Added 2–4 player support (previously fixed at 4 players).
 - Added `LudoSetup` widget with an interactive player-count selection screen (2, 3, or 4 players) before game start.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_ludo/service/ludo_team.dart';
 
 import '../controller/ludo_controller.dart';
 import '../model/ludo_dice_rules.dart';
@@ -9,36 +10,20 @@ import 'ludo_board.dart';
 import 'ludo_dice.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Player setup screen – choose 2 to 4 players before game starts
+// LudoSetup — picks player count AND optional teams mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Wraps the game with a setup screen that asks how many players (2–4)
-/// before creating the [LudoController].
-///
-/// Usage (replace your existing game entry point):
-/// ```dart
-/// LudoSetup(
-///   onStart: (controller) => Navigator.of(context).push(
-///     MaterialPageRoute(builder: (_) => LudoGame(controller: controller)),
-///   ),
-/// )
-/// ```
-///
-/// Or embed it directly so it transitions inline:
-/// ```dart
-/// LudoSetup()
-/// ```
 class LudoSetup extends StatefulWidget {
   const LudoSetup({
     super.key,
-    this.theme = LudoTheme.defaultTheme,
-    this.diceRules = const LudoDiceRules(),
+    this.theme       = LudoTheme.defaultTheme,
+    this.diceRules   = const LudoDiceRules(),
     this.enableAudio = true,
   });
 
-  final LudoTheme    theme;
+  final LudoTheme     theme;
   final LudoDiceRules diceRules;
-  final bool         enableAudio;
+  final bool          enableAudio;
 
   @override
   State<LudoSetup> createState() => _LudoSetupState();
@@ -47,7 +32,6 @@ class LudoSetup extends StatefulWidget {
 class _LudoSetupState extends State<LudoSetup> {
   LudoController? _controller;
 
-  // Default player definitions – colour matches kHomeBaseOrigins order.
   static const List<_PlayerDef> _defaults = [
     _PlayerDef('Red',    Color(0xFFE53935)),
     _PlayerDef('Blue',   Color(0xFF1E88E5)),
@@ -55,18 +39,24 @@ class _LudoSetupState extends State<LudoSetup> {
     _PlayerDef('Yellow', Color(0xFFFFB300)),
   ];
 
-  int _count = 4;
+  int  _count     = 4;
+  bool _teamsMode = false;
 
   void _startGame() {
     final players = List.generate(
       _count,
       (i) => LudoPlayer(name: _defaults[i].name, color: _defaults[i].color),
     );
+
+    // Teams mode is only valid with exactly 4 players
+    final teams = (_teamsMode && _count == 4) ? kDefaultTeams : null;
+
     setState(() {
       _controller = LudoController(
-        players: players,
-        diceRules: widget.diceRules,
+        players:     players,
+        diceRules:   widget.diceRules,
         enableAudio: widget.enableAudio,
+        teams:       teams,
       );
     });
   }
@@ -87,9 +77,14 @@ class _LudoSetupState extends State<LudoSetup> {
     final ctrl = _controller;
     if (ctrl == null) {
       return _SetupScreen(
-        count: _count,
-        defaults: _defaults,
-        onCountChanged: (v) => setState(() => _count = v),
+        count:          _count,
+        teamsMode:      _teamsMode,
+        defaults:       _defaults,
+        onCountChanged: (v) => setState(() {
+          _count = v;
+          if (v != 4) _teamsMode = false;
+        }),
+        onTeamsModeChanged: (v) => setState(() => _teamsMode = v),
         onStart: _startGame,
       );
     }
@@ -98,28 +93,32 @@ class _LudoSetupState extends State<LudoSetup> {
       listenable: ctrl,
       builder: (context, _) => LudoGame(
         controller: ctrl,
-        theme: widget.theme,
-        onBack: _backToSetup,
+        theme:      widget.theme,
+        onBack:     _backToSetup,
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Setup screen widget
+// Setup screen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SetupScreen extends StatelessWidget {
   const _SetupScreen({
     required this.count,
+    required this.teamsMode,
     required this.defaults,
     required this.onCountChanged,
+    required this.onTeamsModeChanged,
     required this.onStart,
   });
 
   final int                  count;
+  final bool                 teamsMode;
   final List<_PlayerDef>     defaults;
   final ValueChanged<int>    onCountChanged;
+  final ValueChanged<bool>   onTeamsModeChanged;
   final VoidCallback         onStart;
 
   @override
@@ -130,7 +129,7 @@ class _SetupScreen extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -155,46 +154,31 @@ class _SetupScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 36),
 
-                  // Player count selector
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
+                  // Player count
+                  _Card(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Number of players',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
+                        _Label('Number of players'),
+                        const SizedBox(height: 14),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [2, 3, 4].map((n) {
-                            final selected = n == count;
+                            final sel = n == count;
                             return GestureDetector(
                               onTap: () => onCountChanged(n),
                               child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 140),
-                                width: 64,
-                                height: 64,
+                                duration: const Duration(milliseconds: 130),
+                                width: 64, height: 64,
                                 decoration: BoxDecoration(
-                                  color: selected
+                                  color: sel
                                       ? const Color(0xFF212121)
                                       : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: selected
+                                    color: sel
                                         ? const Color(0xFF212121)
                                         : Colors.grey.shade300,
                                   ),
@@ -205,7 +189,7 @@ class _SetupScreen extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 26,
                                       fontWeight: FontWeight.w700,
-                                      color: selected
+                                      color: sel
                                           ? Colors.white
                                           : Colors.grey.shade600,
                                     ),
@@ -219,65 +203,106 @@ class _SetupScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
 
-                  // Player colour preview
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Players',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: List.generate(count, (i) {
-                            final def = defaults[i];
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
+                  // Teams mode toggle (only shown for 4 players)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    child: count == 4
+                        ? _Card(
+                            child: Row(
                               children: [
-                                Container(
-                                  width: 16,
-                                  height: 16,
-                                  decoration: BoxDecoration(
-                                    color: def.color,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: def.color.withValues(alpha: 0.4),
-                                    ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _Label('Teams mode (2v2)'),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        teamsMode
+                                            ? 'Red+Yellow  vs  Blue+Green'
+                                            : 'Every player for themselves',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  def.name,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                Switch(
+                                  value: teamsMode,
+                                  onChanged: onTeamsModeChanged,
+                                  activeThumbColor: const Color(0xFF212121),
                                 ),
                               ],
-                            );
-                          }),
-                        ),
-                      ],
-                    ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 14),
+
+                  // Teams preview when enabled
+                  if (teamsMode && count == 4) ...[
+                    _Card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _Label('Teams'),
+                          const SizedBox(height: 12),
+                          _TeamRow(
+                            label: 'Team A',
+                            players: [defaults[0], defaults[3]],
+                          ),
+                          const SizedBox(height: 8),
+                          _TeamRow(
+                            label: 'Team B',
+                            players: [defaults[1], defaults[2]],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // Players preview (non-teams mode)
+                  if (!teamsMode)
+                    _Card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _Label('Players'),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: List.generate(count, (i) {
+                              final d = defaults[i];
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 14, height: 14,
+                                    decoration: BoxDecoration(
+                                      color: d.color,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(d.name,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500)),
+                                ],
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 28),
 
                   // Start button
                   GestureDetector(
@@ -312,6 +337,80 @@ class _SetupScreen extends StatelessWidget {
   }
 }
 
+class _TeamRow extends StatelessWidget {
+  const _TeamRow({required this.label, required this.players});
+  final String            label;
+  final List<_PlayerDef>  players;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 10),
+        const Text('→', style: TextStyle(color: Colors.grey)),
+        const SizedBox(width: 10),
+        for (var i = 0; i < players.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text('+',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+            ),
+          Container(
+            width: 12, height: 12,
+            decoration: BoxDecoration(
+              color: players[i].color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(players[i].name,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ],
+      ],
+    );
+  }
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Colors.grey.shade700,
+        letterSpacing: 0.3,
+      ),
+    );
+  }
+}
+
 class _PlayerDef {
   const _PlayerDef(this.name, this.color);
   final String name;
@@ -319,15 +418,15 @@ class _PlayerDef {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main game widget (board + dice + status)
+// LudoGame — main game screen
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LudoGame extends StatelessWidget {
   const LudoGame({
     super.key,
     required this.controller,
-    this.theme = LudoTheme.defaultTheme,
-    this.showDice = true,
+    this.theme        = LudoTheme.defaultTheme,
+    this.showDice     = true,
     this.showStatusBar = true,
     this.onBack,
   });
@@ -347,27 +446,23 @@ class LudoGame extends StatelessWidget {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
           body: SafeArea(
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    if (showStatusBar) _TopBar(state: state, onBack: onBack),
-                    const SizedBox(height: 6),
-                    if (showStatusBar) _TurnPill(state: state),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: LudoBoard(controller: controller, theme: theme),
-                      ),
-                    ),
-                    if (showDice) LudoDice(controller: controller),
-                  ],
+            child: Stack(children: [
+              Column(children: [
+                if (showStatusBar) _TopBar(state: state, onBack: onBack),
+                const SizedBox(height: 4),
+                if (showStatusBar) _TurnPill(state: state),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: LudoBoard(controller: controller, theme: theme),
+                  ),
                 ),
-                if (state.isFinished)
-                  _GameOverOverlay(state: state, controller: controller),
-              ],
-            ),
+                if (showDice) LudoDice(controller: controller),
+              ]),
+              if (state.isFinished)
+                _GameOverOverlay(state: state, controller: controller),
+            ]),
           ),
         );
       },
@@ -388,30 +483,125 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(children: [
+        if (onBack != null) ...[
+          GestureDetector(
+            onTap: onBack,
+            child: const Icon(Icons.arrow_back, size: 22, color: Color(0xFF424242)),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: state.isTeamsMode
+              ? _TeamsStatusRow(state: state)
+              : _PlayersStatusRow(state: state),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Standard mode: one chip per player.
+class _PlayersStatusRow extends StatelessWidget {
+  const _PlayersStatusRow({required this.state});
+  final LudoGameState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < state.players.length; i++)
+          _PlayerChip(
+            player:   state.players[i],
+            isActive: i == state.currentPlayerIndex && !state.isFinished,
+            place:    state.winners.contains(i)
+                ? state.winners.indexOf(i) + 1
+                : null,
+          ),
+      ],
+    );
+  }
+}
+
+/// Teams mode: one chip per team with both player dots inside.
+class _TeamsStatusRow extends StatelessWidget {
+  const _TeamsStatusRow({required this.state});
+  final LudoGameState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final teams = state.teams!;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: teams.map((team) {
+        final isActive = team.contains(state.currentPlayerIndex) && !state.isFinished;
+        final won = team.playerIndices.every((i) => state.winners.contains(i));
+        return _TeamChip(
+          team:     team,
+          players:  state.players,
+          isActive: isActive,
+          won:      won,
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _TeamChip extends StatelessWidget {
+  const _TeamChip({
+    required this.team,
+    required this.players,
+    required this.isActive,
+    required this.won,
+  });
+
+  final LudoTeam        team;
+  final List<LudoPlayer> players;
+  final bool            isActive;
+  final bool            won;
+
+  @override
+  Widget build(BuildContext context) {
+    final p0 = players[team.playerIndices[0]];
+    final p1 = players[team.playerIndices[1]];
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isActive
+            ? p0.color.withValues(alpha: 0.08)
+            : Colors.transparent,
+        border: Border.all(
+          color: isActive ? p0.color : Colors.grey.shade300,
+          width: isActive ? 1.5 : 1.0,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (onBack != null)
-            GestureDetector(
-              onTap: onBack,
-              child: const Icon(Icons.arrow_back, size: 22, color: Color(0xFF424242)),
-            ),
-          if (onBack != null) const SizedBox(width: 8),
-          // Player chips
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < state.players.length; i++)
-                  _PlayerChip(
-                    player: state.players[i],
-                    isActive: i == state.currentPlayerIndex && !state.isFinished,
-                    place: state.winners.contains(i)
-                        ? state.winners.indexOf(i) + 1
-                        : null,
-                  ),
-              ],
+          // Two small dots side by side
+          Container(width: 8, height: 8,
+              decoration: BoxDecoration(color: p0.color, shape: BoxShape.circle)),
+          const SizedBox(width: 3),
+          Container(width: 8, height: 8,
+              decoration: BoxDecoration(color: p1.color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(
+            team.name,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+              color: isActive ? p0.color : Colors.grey.shade500,
             ),
           ),
+          if (won) ...[
+            const SizedBox(width: 4),
+            const Text('🏆', style: TextStyle(fontSize: 12)),
+          ],
         ],
       ),
     );
@@ -448,11 +638,8 @@ class _PlayerChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(color: player.color, shape: BoxShape.circle),
-          ),
+          Container(width: 9, height: 9,
+              decoration: BoxDecoration(color: player.color, shape: BoxShape.circle)),
           const SizedBox(width: 5),
           Text(
             player.name,
@@ -464,10 +651,8 @@ class _PlayerChip extends StatelessWidget {
           ),
           if (place != null) ...[
             const SizedBox(width: 4),
-            Text(
-              ['🥇','🥈','🥉','🏅'][place! - 1],
-              style: const TextStyle(fontSize: 12),
-            ),
+            Text(['🥇','🥈','🥉','🏅'][place! - 1],
+                style: const TextStyle(fontSize: 12)),
           ],
         ],
       ),
@@ -483,8 +668,19 @@ class _TurnPill extends StatelessWidget {
   Widget build(BuildContext context) {
     if (state.isFinished) return const SizedBox.shrink();
     final player = state.players[state.currentPlayerIndex];
+
+    String label;
+    if (state.isTeamsMode) {
+      final team = state.teamOf(state.currentPlayerIndex);
+      label = team != null
+          ? '${player.name} (${team.name}) — your turn'
+          : "${player.name}'s turn";
+    } else {
+      label = "${player.name}'s turn";
+    }
+
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 220),
       child: Container(
         key: ValueKey(state.currentPlayerIndex),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -494,7 +690,7 @@ class _TurnPill extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
-          "${player.name}'s turn",
+          label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -507,7 +703,7 @@ class _TurnPill extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Game over overlay
+// Game-over overlay — teams mode shows winning team, standard shows podium
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _GameOverOverlay extends StatelessWidget {
@@ -532,14 +728,20 @@ class _GameOverOverlay extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Game Over',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 16),
-                for (var i = 0; i < state.winners.length; i++)
-                  _WinRow(
-                    place: i + 1,
-                    player: state.players[state.winners[i]],
+                Text(
+                  state.isTeamsMode ? '🏆 Team Wins!' : 'Game Over',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+                const SizedBox(height: 16),
+
+                if (state.isTeamsMode)
+                  _TeamsResult(state: state)
+                else
+                  _StandardResult(state: state),
+
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: controller.reset,
@@ -571,29 +773,104 @@ class _GameOverOverlay extends StatelessWidget {
   }
 }
 
-class _WinRow extends StatelessWidget {
-  const _WinRow({required this.place, required this.player});
-  final int        place;
-  final LudoPlayer player;
+class _TeamsResult extends StatelessWidget {
+  const _TeamsResult({required this.state});
+  final LudoGameState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final winning = state.winningTeam;
+    if (winning == null) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        // Winning team
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.amber.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.amber.shade300),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('🏆', style: TextStyle(fontSize: 22)),
+              const SizedBox(width: 10),
+              Text(
+                winning.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Colour dots
+              for (final pi in winning.playerIndices) ...[
+                Container(
+                  width: 12, height: 12,
+                  decoration: BoxDecoration(
+                    color: state.players[pi].color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 3),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Losing team
+        for (final t in state.teams!)
+          if (t != winning)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('🥈', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Text(t.name,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+class _StandardResult extends StatelessWidget {
+  const _StandardResult({required this.state});
+  final LudoGameState state;
 
   @override
   Widget build(BuildContext context) {
     final medals = ['🥇','🥈','🥉','🏅'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(medals[place - 1], style: const TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
-          Container(
-            width: 12, height: 12,
-            decoration: BoxDecoration(color: player.color, shape: BoxShape.circle),
+    return Column(
+      children: [
+        for (var i = 0; i < state.winners.length; i++)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Text(medals[i], style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Container(
+                width: 12, height: 12,
+                decoration: BoxDecoration(
+                  color: state.players[state.winners[i]].color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                state.players[state.winners[i]].name,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ]),
           ),
-          const SizedBox(width: 8),
-          Text(player.name,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        ],
-      ),
+      ],
     );
   }
 }

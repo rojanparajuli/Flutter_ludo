@@ -1,26 +1,19 @@
+import 'package:flutter_ludo/rules/capture_rules.dart';
+import 'package:flutter_ludo/rules/move_validator.dart';
+import 'package:flutter_ludo/rules/win_rules.dart';
+import 'package:flutter_ludo/service/ludo_team.dart';
 
-import 'package:flutter_ludo/model/ludo_dice_rules.dart';
-import 'package:flutter_ludo/model/ludo_game_state.dart';
-import 'package:flutter_ludo/model/ludo_piece.dart';
+import '../model/ludo_dice_rules.dart';
+import '../model/ludo_game_state.dart';
+import '../model/ludo_piece.dart';
 
-import '../rules/capture_rules.dart';
-import '../rules/move_validator.dart';
-import '../rules/win_rules.dart';
 
-/// Result of [LudoEngine.roll].
 class LudoEngineRollResult {
   const LudoEngineRollResult({required this.state, required this.passed});
-
-  /// State after the roll. If [passed] is true, this already reflects the
-  /// turn having moved on to the next player.
   final LudoGameState state;
-
-  /// True if the roll produced no legal moves and the turn was passed
-  /// automatically.
   final bool passed;
 }
 
-/// Result of [LudoEngine.move].
 class LudoEngineMoveResult {
   const LudoEngineMoveResult({
     required this.state,
@@ -29,47 +22,43 @@ class LudoEngineMoveResult {
     required this.toPosition,
     required this.capturedPieces,
     required this.playerWon,
+    required this.teamWon,
     required this.turnPassed,
     required this.gameFinished,
   });
 
-  final LudoGameState state;
-  final LudoPiece movedPiece;
-  final int fromPosition;
-  final int toPosition;
+  final LudoGameState  state;
+  final LudoPiece      movedPiece;
+  final int            fromPosition;
+  final int            toPosition;
   final List<LudoPiece> capturedPieces;
 
-  /// True if this move caused [movedPiece]'s player to win.
+  /// True if the individual player just placed their 4th piece home.
   final bool playerWon;
 
-  /// True if the turn passed to the next player as a result of this move
-  /// (false if the same player gets an extra turn, or the game just
-  /// finished).
-  final bool turnPassed;
+  /// True if this move caused the whole TEAM to win (teams mode only).
+  final bool teamWon;
 
-  /// True if this move caused the overall game to finish.
+  final bool turnPassed;
   final bool gameFinished;
 }
 
-/// Pure, stateless rules engine implementing the turn flow from the
-/// specification: roll dice -> determine legal moves -> select piece ->
-/// move piece -> apply captures -> check win state -> apply extra-turn
-/// rule -> pass turn.
-///
-/// Every method takes an immutable [LudoGameState] and returns a new one.
-/// None of flutter_ludo's mutable bookkeeping (events, [ChangeNotifier],
-/// randomness) lives here, which is what makes this straightforward to
-/// unit test in isolation from [LudoController].
+/// Pure stateless engine. Pass [teams] to enable teams mode.
 class LudoEngine {
-  const LudoEngine(this.diceRules);
+  const LudoEngine(this.diceRules, {this.teams});
 
-  final LudoDiceRules diceRules;
+  final LudoDiceRules   diceRules;
 
-  /// Applies a dice roll: computes legal moves for [diceValue] and updates
-  /// [LudoGameState.phase] accordingly. If there are no legal moves, the
-  /// turn is passed immediately (see [LudoEngineRollResult.passed]).
+  /// Non-null → teams mode active.
+  final List<LudoTeam>? teams;
+
+  // ── roll ─────────────────────────────────────────────────────────
+
   LudoEngineRollResult roll(LudoGameState state, int diceValue) {
-    final moves = computeLegalMoves(state, diceRules, diceValue);
+    final moves = computeLegalMoves(
+      state, diceRules, diceValue,
+      teams: teams,
+    );
 
     if (moves.isEmpty) {
       return LudoEngineRollResult(
@@ -93,19 +82,23 @@ class LudoEngine {
     );
   }
 
-  /// Applies the move of [pieceId], which must be among
-  /// `state.legalMoves`. Handles captures, win detection, the extra-turn
-  /// rule, and passing the turn.
+  // ── move ─────────────────────────────────────────────────────────
+
   LudoEngineMoveResult move(LudoGameState state, int pieceId) {
-    final chosen = state.legalMoves.firstWhere((m) => m.pieceId == pieceId);
-    final piece = state.pieces.firstWhere((p) => p.id == pieceId);
+    final chosen    = state.legalMoves.firstWhere((m) => m.pieceId == pieceId);
+    final piece     = state.pieces.firstWhere((p) => p.id == pieceId);
     final movedPiece = piece.copyWith(trackPosition: chosen.toPosition);
 
     var pieces = [
       for (final p in state.pieces) p.id == pieceId ? movedPiece : p,
     ];
 
-    final captured = captureOpponents(pieces: pieces, mover: movedPiece);
+    // ── captures ─────────────────────────────────────────────────
+    final captured = captureOpponents(
+      pieces: pieces,
+      mover: movedPiece,
+      teams: teams,
+    );
     if (captured.isNotEmpty) {
       final capturedIds = captured.map((c) => c.id).toSet();
       pieces = [
@@ -116,7 +109,10 @@ class LudoEngine {
       ];
     }
 
-    final diceValue = state.diceValue!;
+    final diceValue    = state.diceValue!;
+    final totalPlayers = state.players.length;
+
+    // ── individual player win ─────────────────────────────────────
     final justWon = hasPlayerWon(pieces, movedPiece.playerIndex) &&
         !state.winners.contains(movedPiece.playerIndex);
 
@@ -125,30 +121,59 @@ class LudoEngine {
       winners = [...winners, movedPiece.playerIndex];
     }
 
-    final totalPlayers = state.players.length;
-    final gameFinished = isGameFinished(winners, totalPlayers);
-    if (gameFinished && winners.length == totalPlayers - 1) {
-      // Standard Ludo convention: once all-but-one player has finished,
-      // the last remaining player is automatically awarded last place.
+    // ── team win check ────────────────────────────────────────────
+    bool teamJustWon = false;
+    if (teams != null && justWon) {
+      final myTeam = teamOf(movedPiece.playerIndex, teams);
+      if (myTeam != null && hasTeamWon(pieces, myTeam)) {
+        teamJustWon = true;
+        // Also add teammate to winners list if not already there
+        final mate = myTeam.teammateOf(movedPiece.playerIndex);
+        if (!winners.contains(mate)) {
+          winners = [...winners, mate];
+        }
+      }
+    }
+
+    // ── game finished ─────────────────────────────────────────────
+    final gameFinished = isGameFinished(
+      winners.length,
+      totalPlayers,
+      teams: teams,
+      pieces: pieces,
+    );
+
+    // Auto-add last-place player(s) in standard mode
+    if (gameFinished && teams == null && winners.length == totalPlayers - 1) {
       final last = List<int>.generate(totalPlayers, (i) => i)
           .firstWhere((i) => !winners.contains(i));
       winners = [...winners, last];
     }
 
-    final extraTurn = !gameFinished && diceRules.grantsExtraTurn(diceValue);
+    // In teams mode, auto-add losing team to winners (last place)
+    if (gameFinished && teams != null) {
+      for (final t in teams!) {
+        for (final pi in t.playerIndices) {
+          if (!winners.contains(pi)) winners = [...winners, pi];
+        }
+      }
+    }
+
+    final extraTurn  = !gameFinished && diceRules.grantsExtraTurn(diceValue);
     final turnPassed = !gameFinished && !extraTurn;
 
     final nextPlayerIndex = gameFinished || extraTurn
         ? state.currentPlayerIndex
-        : _nextPlayer(state.copyWith(winners: winners),
-            state.currentPlayerIndex);
+        : _nextPlayer(
+            state.copyWith(winners: winners),
+            state.currentPlayerIndex,
+          );
 
     final newState = state.copyWith(
       pieces: pieces,
       winners: winners,
       currentPlayerIndex: nextPlayerIndex,
-      phase:
-          gameFinished ? LudoTurnPhase.gameOver : LudoTurnPhase.awaitingRoll,
+      phase: gameFinished ? LudoTurnPhase.gameOver : LudoTurnPhase.awaitingRoll,
       legalMoves: const [],
       clearDiceValue: true,
     );
@@ -160,17 +185,21 @@ class LudoEngine {
       toPosition: chosen.toPosition,
       capturedPieces: captured,
       playerWon: justWon,
+      teamWon: teamJustWon,
       turnPassed: turnPassed,
       gameFinished: gameFinished,
     );
   }
 
+  // ── next player ───────────────────────────────────────────────────
+  // Turn order is always Red→Blue→Green→Yellow (interleaved) regardless
+  // of teams. Finished players are skipped.
   int _nextPlayer(LudoGameState state, int from) {
     final total = state.players.length;
-    var next = (from + 1) % total;
+    var next  = (from + 1) % total;
     var guard = 0;
     while (state.winners.contains(next) && guard < total) {
-      next = (next + 1) % total;
+      next  = (next + 1) % total;
       guard++;
     }
     return next;
