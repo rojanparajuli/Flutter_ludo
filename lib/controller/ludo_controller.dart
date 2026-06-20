@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_ludo/service/ludo_team.dart';
 
 import '../engine/ludo_engine.dart';
 import '../model/ludo_dice_rules.dart';
@@ -14,7 +15,12 @@ typedef LudoPieceMovedCallback    = void Function(LudoPiece piece, int from, int
 typedef LudoPieceCapturedCallback = void Function(LudoPiece captured, LudoPiece by);
 typedef LudoTurnChangedCallback   = void Function(int currentPlayerIndex);
 typedef LudoPlayerWonCallback     = void Function(int playerIndex, int place);
-typedef LudoGameFinishedCallback  = void Function(List<int> winnersInOrder);
+
+/// Fired when a full team wins in teams mode.
+/// [team] is the winning team, [place] is always 1 (first place).
+typedef LudoTeamWonCallback = void Function(LudoTeam team);
+
+typedef LudoGameFinishedCallback = void Function(List<int> winnersInOrder);
 
 class LudoController extends ChangeNotifier {
   LudoController({
@@ -26,34 +32,44 @@ class LudoController extends ChangeNotifier {
     this.onPieceCaptured,
     this.onTurnChanged,
     this.onPlayerWon,
+    this.onTeamWon,
     this.onGameFinished,
     bool enableAudio = true,
     this.stepAnimationDuration = const Duration(milliseconds: 180),
+    // Teams mode — pass kDefaultTeams or a custom list to enable.
+    List<LudoTeam>? teams,
   })  : assert(
           players.length >= 2 && players.length <= 4,
           'flutter_ludo supports 2 to 4 players.',
         ),
+        assert(
+          teams == null || players.length == 4,
+          'Teams mode requires exactly 4 players.',
+        ),
         assert(diceRules.startAllowedValues.isNotEmpty),
         _diceRoller = diceRoller ?? _defaultDiceRoller,
-        _engine = LudoEngine(diceRules),
-        _audio = AudioService(enabled: enableAudio) {
-    _state = _initialState(players);
+        _engine     = LudoEngine(diceRules, teams: teams),
+        _audio      = AudioService(enabled: enableAudio),
+        _teams      = teams {
+    _state = _initialState(players, teams);
   }
 
   static int _defaultDiceRoller() => 1 + Random().nextInt(6);
 
-  final LudoDiceRules diceRules;
-  final Duration stepAnimationDuration;
+  final LudoDiceRules    diceRules;
+  final Duration         stepAnimationDuration;
+  final List<LudoTeam>?  _teams;
 
-  final int Function() _diceRoller;
-  final LudoEngine _engine;
-  final AudioService _audio;
+  final int Function()   _diceRoller;
+  final LudoEngine       _engine;
+  final AudioService     _audio;
 
   final LudoDiceRolledCallback?    onDiceRolled;
   final LudoPieceMovedCallback?    onPieceMoved;
   final LudoPieceCapturedCallback? onPieceCaptured;
   final LudoTurnChangedCallback?   onTurnChanged;
   final LudoPlayerWonCallback?     onPlayerWon;
+  final LudoTeamWonCallback?       onTeamWon;
   final LudoGameFinishedCallback?  onGameFinished;
 
   late LudoGameState _state;
@@ -62,33 +78,40 @@ class LudoController extends ChangeNotifier {
   int?       _animatingStep;
   bool       _isAnimating = false;
 
-  LudoGameState get state          => _state;
-  bool          get enableAudio    => _audio.enabled;
-  bool          get isAnimating    => _isAnimating;
-  LudoPiece?    get animatingPiece => _animatingPiece;
+  // ── public getters ────────────────────────────────────────────────
+  LudoGameState  get state          => _state;
+  bool           get enableAudio    => _audio.enabled;
+  bool           get isAnimating    => _isAnimating;
+  LudoPiece?     get animatingPiece => _animatingPiece;
+  bool           get isTeamsMode    => _teams != null;
+  List<LudoTeam>? get teams         => _teams;
 
   void toggleAudio(bool enabled) {
     _audio.enabled = enabled;
     notifyListeners();
   }
 
-  static LudoGameState _initialState(List<LudoPlayer> players) {
-    // Only create pieces for the players that are actually in the game.
-    // Unused home quadrants (indices >= players.length) are left empty.
+  // ── init ──────────────────────────────────────────────────────────
+  static LudoGameState _initialState(
+    List<LudoPlayer> players,
+    List<LudoTeam>?  teams,
+  ) {
     final pieces = [
       for (var p = 0; p < players.length; p++)
         for (var l = 0; l < 4; l++)
           LudoPiece(id: p * 4 + l, playerIndex: p),
     ];
     return LudoGameState(
-      players: players,
-      pieces: pieces,
+      players:            players,
+      pieces:             pieces,
       currentPlayerIndex: 0,
-      phase: LudoTurnPhase.awaitingRoll,
-      lastMovedPiece: null,
+      phase:              LudoTurnPhase.awaitingRoll,
+      lastMovedPiece:     null,
+      teams:              teams,
     );
   }
 
+  // ── roll ──────────────────────────────────────────────────────────
   int rollDice() {
     if (_state.isFinished) throw StateError('Game already finished.');
     if (_state.phase == LudoTurnPhase.awaitingPieceSelection) {
@@ -112,6 +135,7 @@ class LudoController extends ChangeNotifier {
 
     notifyListeners();
 
+    // Auto-move when only one legal option
     if (_state.legalMoves.length == 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_state.phase == LudoTurnPhase.awaitingPieceSelection &&
@@ -124,20 +148,21 @@ class LudoController extends ChangeNotifier {
     return value;
   }
 
+  // ── select piece ──────────────────────────────────────────────────
   Future<void> selectPiece(int pieceId) async {
     if (_state.phase != LudoTurnPhase.awaitingPieceSelection) {
       throw StateError('Roll the dice first.');
     }
     if (_isAnimating) return;
 
-    final move = _state.legalMoves.firstWhere(
+    final move  = _state.legalMoves.firstWhere(
       (m) => m.pieceId == pieceId,
       orElse: () => throw ArgumentError('Piece $pieceId is not a legal move.'),
     );
-
     final piece = _state.pieces.firstWhere((p) => p.id == pieceId);
     final steps = move.toPosition - move.fromPosition;
 
+    // ── step-by-step animation ────────────────────────────────────
     _isAnimating    = true;
     _animatingPiece = piece;
 
@@ -153,6 +178,7 @@ class LudoController extends ChangeNotifier {
     _animatingStep  = null;
     _isAnimating    = false;
 
+    // ── commit to engine ──────────────────────────────────────────
     final result = _engine.move(_state, pieceId);
     _state = result.state.copyWith(lastMovedPiece: result.movedPiece);
 
@@ -171,6 +197,12 @@ class LudoController extends ChangeNotifier {
       _audio.playPieceHome();
     }
 
+    // Teams mode: fire team-won callback
+    if (result.teamWon) {
+      final myTeam = teamOf(result.movedPiece.playerIndex, _teams);
+      if (myTeam != null) onTeamWon?.call(myTeam);
+    }
+
     if (result.gameFinished) {
       _audio.playGameOver();
       onGameFinished?.call(List.unmodifiable(_state.winners));
@@ -182,11 +214,12 @@ class LudoController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── reset ─────────────────────────────────────────────────────────
   void reset() {
     _isAnimating    = false;
     _animatingPiece = null;
     _animatingStep  = null;
-    _state = _initialState(_state.players);
+    _state = _initialState(_state.players, _teams);
     notifyListeners();
   }
 

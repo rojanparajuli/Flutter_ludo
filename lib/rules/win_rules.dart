@@ -1,17 +1,37 @@
+import 'package:flutter_ludo/service/ludo_team.dart';
 
-import 'package:flutter_ludo/model/ludo_piece.dart';
+import '../model/ludo_piece.dart';
 
-/// Whether [playerIndex] has won: all four of their pieces have reached the
-/// final home cell.
+/// Returns true if [playerIndex]'s own 4 pieces have all finished.
 bool hasPlayerWon(List<LudoPiece> pieces, int playerIndex) {
-  final own = pieces.where((p) => p.playerIndex == playerIndex);
-  return own.isNotEmpty && own.every((p) => p.isFinished);
+  return pieces
+      .where((p) => p.playerIndex == playerIndex)
+      .every((p) => p.isFinished);
 }
 
-/// Whether the overall game is finished.
+/// In **teams mode**: returns true if both players on [team] have all 4
+/// pieces finished (8 pieces total).
 ///
-/// Once all but one player has won, the game is over and the remaining
-/// player is automatically placed last — the standard Ludo convention,
-/// since with only one player left there is nothing left to contest.
-bool isGameFinished(List<int> winners, int totalPlayers) =>
-    winners.length >= totalPlayers - 1;
+/// In standard mode ([teams] == null) this is never called — use
+/// [hasPlayerWon] directly.
+bool hasTeamWon(List<LudoPiece> pieces, LudoTeam team) {
+  return team.playerIndices.every((pi) => hasPlayerWon(pieces, pi));
+}
+
+/// Returns true if the overall game is finished.
+///
+/// - Standard mode: [winnersCount] >= [totalPlayers] - 1
+/// - Teams mode: at least one full team has all 8 pieces home
+bool isGameFinished(
+  int winnersCount,
+  int totalPlayers, {
+  List<LudoTeam>? teams,
+  List<LudoPiece>? pieces,
+}) {
+  if (teams != null && pieces != null) {
+    // Teams mode: game ends the moment one full team finishes.
+    return teams.any((t) => hasTeamWon(pieces, t));
+  }
+  // Standard mode: all but one player have finished.
+  return winnersCount >= totalPlayers - 1;
+}

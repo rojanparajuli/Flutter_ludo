@@ -1,23 +1,37 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_ludo/flutter_ludo.dart';
+import 'package:flutter_ludo/model/ludo_piece.dart';
+import 'package:flutter_ludo/service/ludo_team.dart';
 
-void main() {
-  test('hasPlayerWon is true only once all 4 pieces are finished', () {
-    final allFinished = [
-      for (var i = 0; i < 4; i++)
-        LudoPiece(id: i, playerIndex: 0, trackPosition: LudoPiece.finished),
-    ];
-    expect(hasPlayerWon(allFinished, 0), isTrue);
 
-    final notQuite = [
-      ...allFinished.take(3),
-      const LudoPiece(id: 3, playerIndex: 0, trackPosition: 40),
-    ];
-    expect(hasPlayerWon(notQuite, 0), isFalse);
-  });
+/// Returns true if [playerIndex]'s own 4 pieces have all finished.
+bool hasPlayerWon(List<LudoPiece> pieces, int playerIndex) {
+  return pieces
+      .where((p) => p.playerIndex == playerIndex)
+      .every((p) => p.isFinished);
+}
 
-  test('isGameFinished once all-but-one player has won', () {
-    expect(isGameFinished([0, 1], 4), isFalse);
-    expect(isGameFinished([0, 1, 2], 4), isTrue);
-  });
+/// In **teams mode**: returns true if both players on [team] have all 4
+/// pieces finished (8 pieces total).
+bool hasTeamWon(List<LudoPiece> pieces, LudoTeam team) {
+  return team.playerIndices.every((pi) => hasPlayerWon(pieces, pi));
+}
+
+/// Returns true if the overall game is finished.
+///
+/// - Standard mode ([teams] == null):
+///   [winnersCount] >= [totalPlayers] - 1
+///   (all-but-one have finished; last place is auto-awarded).
+///
+/// - Teams mode ([teams] != null):
+///   At least one full team has all 8 pieces home.
+///   [pieces] must be supplied in teams mode.
+bool isGameFinished(
+  int winnersCount,
+  int totalPlayers, {
+  List<LudoTeam>? teams,
+  List<LudoPiece>? pieces,
+}) {
+  if (teams != null && pieces != null) {
+    return teams.any((t) => hasTeamWon(pieces, t));
+  }
+  return winnersCount >= totalPlayers - 1;
 }

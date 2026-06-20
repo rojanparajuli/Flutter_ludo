@@ -1,28 +1,15 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_ludo/service/ludo_team.dart';
 
 import 'ludo_player.dart';
 import 'ludo_piece.dart';
 import 'legal_move.dart';
 
-/// Game phase, useful for driving UI (e.g. disabling the dice button while
-/// a piece selection is pending).
-enum LudoTurnPhase {
-  /// Waiting for the current player to roll the dice.
-  awaitingRoll,
+enum LudoTurnPhase { awaitingRoll, awaitingPieceSelection, gameOver }
 
-  /// Dice has been rolled; waiting for the current player to pick a piece
-  /// from [LudoGameState.legalMoves].
-  awaitingPieceSelection,
-
-  /// The whole game has finished. See [LudoGameState.isFinished] and
-  /// [LudoGameState.winners].
-  gameOver,
-}
-
-/// Immutable snapshot of the entire game, as exposed by [LudoController].
+/// Immutable snapshot of the entire game.
 ///
-/// Exposes players, current turn, dice value, legal moves, winners, and
-/// completion status, per the package specification.
+/// [teams] is non-null when teams mode is active.
 @immutable
 class LudoGameState {
   const LudoGameState({
@@ -34,58 +21,71 @@ class LudoGameState {
     this.legalMoves = const [],
     this.winners = const [],
     this.lastMovedPiece,
+    this.teams,
   });
 
-  final List<LudoPlayer> players;
-  final List<LudoPiece> pieces;
-  final int currentPlayerIndex;
-  final LudoTurnPhase phase;
-
-  /// Value of the most recent dice roll for the current player, or `null`
-  /// if the dice has not been rolled yet this turn.
-  final int? diceValue;
-
-  /// Moves the current player may legally make with [diceValue]. Empty if
-  /// the dice hasn't been rolled yet, or if the most recent roll produced
-  /// no legal moves (in which case the turn is passed automatically).
+  final List<LudoPlayer>    players;
+  final List<LudoPiece>     pieces;
+  final int                 currentPlayerIndex;
+  final LudoTurnPhase       phase;
+  final int?                diceValue;
   final List<LudoLegalMove> legalMoves;
+  final List<int>           winners;
+  final LudoPiece?          lastMovedPiece;
 
-  /// Player indices in the order they finished (won), first to last. Once
-  /// this contains `players.length - 1` entries the game is over and the
-  /// one remaining player index is appended automatically in last place.
-  final List<int> winners;
+  /// Non-null when the game was started in teams mode.
+  final List<LudoTeam>? teams;
 
-  /// The piece that was last moved (for visual feedback/highlighting).
-  final LudoPiece? lastMovedPiece;
+  bool get isFinished  => phase == LudoTurnPhase.gameOver;
+  bool get isTeamsMode => teams != null;
 
-  bool get isFinished => phase == LudoTurnPhase.gameOver;
+  /// Returns the winning team (teams mode), or null.
+  LudoTeam? get winningTeam {
+    if (teams == null || winners.isEmpty) return null;
+    for (final t in teams!) {
+      if (t.playerIndices.every((i) => winners.contains(i))) return t;
+    }
+    return null;
+  }
+
+  /// Returns the team [playerIndex] belongs to, or null.
+  LudoTeam? teamOf(int playerIndex) {
+    if (teams == null) return null;
+    for (final t in teams!) {
+      if (t.contains(playerIndex)) return t;
+    }
+    return null;
+  }
+
+  /// Whether [a] and [b] are teammates.
+  bool areTeammates(int a, int b) => teamOf(a) == teamOf(b) && teamOf(a) != null;
 
   List<LudoPiece> piecesOf(int playerIndex) =>
       pieces.where((p) => p.playerIndex == playerIndex).toList();
 
   LudoGameState copyWith({
-    List<LudoPlayer>? players,
-    List<LudoPiece>? pieces,
-    int? currentPlayerIndex,
-    LudoTurnPhase? phase,
-    int? diceValue,
-    bool clearDiceValue = false,
+    List<LudoPlayer>?    players,
+    List<LudoPiece>?     pieces,
+    int?                 currentPlayerIndex,
+    LudoTurnPhase?       phase,
+    int?                 diceValue,
+    bool                 clearDiceValue = false,
     List<LudoLegalMove>? legalMoves,
-    List<int>? winners,
-    LudoPiece? lastMovedPiece,
-    bool clearLastMovedPiece = false,
+    List<int>?           winners,
+    LudoPiece?           lastMovedPiece,
+    bool                 clearLastMovedPiece = false,
+    List<LudoTeam>?      teams,
   }) {
     return LudoGameState(
-      players: players ?? this.players,
-      pieces: pieces ?? this.pieces,
+      players:            players            ?? this.players,
+      pieces:             pieces             ?? this.pieces,
       currentPlayerIndex: currentPlayerIndex ?? this.currentPlayerIndex,
-      phase: phase ?? this.phase,
-      diceValue: clearDiceValue ? null : (diceValue ?? this.diceValue),
-      legalMoves: legalMoves ?? this.legalMoves,
-      winners: winners ?? this.winners,
-      lastMovedPiece: clearLastMovedPiece 
-          ? null 
-          : (lastMovedPiece ?? this.lastMovedPiece),
+      phase:              phase              ?? this.phase,
+      diceValue:          clearDiceValue ? null : (diceValue ?? this.diceValue),
+      legalMoves:         legalMoves         ?? this.legalMoves,
+      winners:            winners            ?? this.winners,
+      lastMovedPiece:     clearLastMovedPiece ? null : (lastMovedPiece ?? this.lastMovedPiece),
+      teams:              teams              ?? this.teams,
     );
   }
 }
