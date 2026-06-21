@@ -1,3 +1,7 @@
+## 0.0.10
+- Bot integrated for the project
+
+
 ## 0.0.9
 - Added **Teams mode (2v2)** — Red+Yellow vs Blue+Green, toggled from the setup screen.
 - Added `LudoTeam` model with `kDefaultTeams` constant and `areTeammates` / `teamOf` helpers.
