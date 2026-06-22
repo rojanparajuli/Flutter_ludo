@@ -87,11 +87,11 @@ class _LudoDiceState extends State<LudoDice>
             onPressed: _roll,
           ),
 
-          // Audio toggle
-          if (widget.showAudioToggle) ...[
-            const SizedBox(width: 10),
-            _AudioToggle(controller: widget.controller),
-          ],
+          // // Audio toggle
+          // if (widget.showAudioToggle) ...[
+          //   const SizedBox(width: 10),
+          //   // _AudioToggle(controller: widget.controller),
+          // ],
         ],
       ),
     );
@@ -230,34 +230,34 @@ class _RollButton extends StatelessWidget {
 // Audio toggle – icon button
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _AudioToggle extends StatefulWidget {
-  const _AudioToggle({required this.controller});
-  final LudoController controller;
+// class _AudioToggle extends StatefulWidget {
+//   const _AudioToggle({required this.controller});
+//   final LudoController controller;
 
-  @override
-  State<_AudioToggle> createState() => _AudioToggleState();
-}
+//   @override
+//   State<_AudioToggle> createState() => _AudioToggleState();
+// }
 
-class _AudioToggleState extends State<_AudioToggle> {
-  late bool _on;
+// class _AudioToggleState extends State<_AudioToggle> {
+//   late bool _on;
 
-  @override
-  void initState() {
-    super.initState();
-    _on = widget.controller.enableAudio;
-  }
+//   @override
+//   void initState() {
+//     super.initState();
+//     _on = widget.controller.enableAudio;
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(_on ? Icons.volume_up : Icons.volume_off),
-      color: _on ? Colors.blueGrey : Colors.grey.shade400,
-      iconSize: 22,
-      tooltip: _on ? 'Mute' : 'Unmute',
-      onPressed: () {
-        setState(() => _on = !_on);
-        widget.controller.toggleAudio(_on);
-      },
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return IconButton(
+//       icon: Icon(_on ? Icons.volume_up : Icons.volume_off),
+//       color: _on ? Colors.blueGrey : Colors.grey.shade400,
+//       iconSize: 22,
+//       tooltip: _on ? 'Mute' : 'Unmute',
+//       onPressed: () {
+//         setState(() => _on = !_on);
+//         widget.controller.toggleAudio(_on);
+//       },
+//     );
+//   }
+// }

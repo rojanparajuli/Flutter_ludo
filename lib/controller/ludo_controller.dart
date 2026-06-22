@@ -8,7 +8,7 @@ import '../model/ludo_dice_rules.dart';
 import '../model/ludo_game_state.dart';
 import '../model/ludo_piece.dart';
 import '../model/ludo_player.dart';
-import '../service/audio_service.dart';
+
 
 typedef LudoDiceRolledCallback    = void Function(int value);
 typedef LudoPieceMovedCallback    = void Function(LudoPiece piece, int from, int to);
@@ -49,7 +49,7 @@ class LudoController extends ChangeNotifier {
         assert(diceRules.startAllowedValues.isNotEmpty),
         _diceRoller = diceRoller ?? _defaultDiceRoller,
         _engine     = LudoEngine(diceRules, teams: teams),
-        _audio      = AudioService(enabled: enableAudio),
+        // _audio      = AudioService(enabled: enableAudio),
         _teams      = teams {
     _state = _initialState(players, teams);
   }
@@ -62,7 +62,7 @@ class LudoController extends ChangeNotifier {
 
   final int Function()   _diceRoller;
   final LudoEngine       _engine;
-  final AudioService     _audio;
+  // final AudioService     _audio;
 
   final LudoDiceRolledCallback?    onDiceRolled;
   final LudoPieceMovedCallback?    onPieceMoved;
@@ -80,16 +80,16 @@ class LudoController extends ChangeNotifier {
 
   // ── public getters ────────────────────────────────────────────────
   LudoGameState  get state          => _state;
-  bool           get enableAudio    => _audio.enabled;
+  // bool           get enableAudio    => _audio.enabled;
   bool           get isAnimating    => _isAnimating;
   LudoPiece?     get animatingPiece => _animatingPiece;
   bool           get isTeamsMode    => _teams != null;
   List<LudoTeam>? get teams         => _teams;
 
-  void toggleAudio(bool enabled) {
-    _audio.enabled = enabled;
-    notifyListeners();
-  }
+  // void toggleAudio(bool enabled) {
+  //   _audio.enabled = enabled;
+  //   notifyListeners();
+  // }
 
   // ── init ──────────────────────────────────────────────────────────
   static LudoGameState _initialState(
@@ -120,7 +120,7 @@ class LudoController extends ChangeNotifier {
     if (_isAnimating) throw StateError('Animation in progress.');
 
     final value = _diceRoller();
-    _audio.playDiceRoll();
+    // _audio.playDiceRoll();
     onDiceRolled?.call(value);
 
     final result = _engine.roll(_state, value);
@@ -170,7 +170,7 @@ class LudoController extends ChangeNotifier {
       _animatingStep  = piece.trackPosition + step;
       _animatingPiece = piece.copyWith(trackPosition: _animatingStep!);
       notifyListeners();
-      await _audio.playPieceMove();
+      // await _audio.playPieceMove();
       await Future.delayed(stepAnimationDuration);
     }
 
@@ -185,16 +185,16 @@ class LudoController extends ChangeNotifier {
     onPieceMoved?.call(result.movedPiece, result.fromPosition, result.toPosition);
 
     for (final captured in result.capturedPieces) {
-      _audio.playCapture();
+      // _audio.playCapture();
       onPieceCaptured?.call(captured, result.movedPiece);
     }
 
     if (result.playerWon) {
-      _audio.playWin();
+      // _audio.playWin();
       final place = _state.winners.indexOf(result.movedPiece.playerIndex) + 1;
       onPlayerWon?.call(result.movedPiece.playerIndex, place);
     } else if (result.movedPiece.isFinished) {
-      _audio.playPieceHome();
+      // _audio.playPieceHome();
     }
 
     // Teams mode: fire team-won callback
@@ -204,7 +204,7 @@ class LudoController extends ChangeNotifier {
     }
 
     if (result.gameFinished) {
-      _audio.playGameOver();
+      // _audio.playGameOver();
       onGameFinished?.call(List.unmodifiable(_state.winners));
     } else if (result.turnPassed) {
       _state = _state.copyWith(clearLastMovedPiece: true);
@@ -225,7 +225,7 @@ class LudoController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _audio.dispose();
+    // _audio.dispose();
     super.dispose();
   }
 }

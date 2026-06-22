@@ -602,10 +602,10 @@ class _BotAwareLudoDiceState extends State<_BotAwareLudoDice>
             onTap:   canRoll ? _roll : null,
           ),
           const SizedBox(width: 10),
-          _AudioToggle(
-            enabled:  ctrl.enableAudio,
-            onToggle: ctrl.toggleAudio,
-          ),
+          // _AudioToggle(
+          //   enabled:  ctrl.enableAudio,
+          //   onToggle: ctrl.toggleAudio,
+          // ),
         ],
       ),
     );
@@ -712,37 +712,37 @@ class _RollButton extends StatelessWidget {
   }
 }
 
-class _AudioToggle extends StatefulWidget {
-  const _AudioToggle({required this.enabled, required this.onToggle});
-  final bool               enabled;
-  final ValueChanged<bool> onToggle;
+// class _AudioToggle extends StatefulWidget {
+//   const _AudioToggle({required this.enabled, required this.onToggle});
+//   final bool               enabled;
+//   final ValueChanged<bool> onToggle;
 
-  @override
-  State<_AudioToggle> createState() => _AudioToggleState();
-}
+//   @override
+//   State<_AudioToggle> createState() => _AudioToggleState();
+// }
 
-class _AudioToggleState extends State<_AudioToggle> {
-  late bool _on;
+// class _AudioToggleState extends State<_AudioToggle> {
+//   late bool _on;
 
-  @override
-  void initState() {
-    super.initState();
-    _on = widget.enabled;
-  }
+//   @override
+//   void initState() {
+//     super.initState();
+//     _on = widget.enabled;
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(_on ? Icons.volume_up : Icons.volume_off),
-      color: _on ? Colors.blueGrey : Colors.grey.shade400,
-      iconSize: 22,
-      onPressed: () {
-        setState(() => _on = !_on);
-        widget.onToggle(_on);
-      },
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return IconButton(
+//       icon: Icon(_on ? Icons.volume_up : Icons.volume_off),
+//       color: _on ? Colors.blueGrey : Colors.grey.shade400,
+//       iconSize: 22,
+//       onPressed: () {
+//         setState(() => _on = !_on);
+//         widget.onToggle(_on);
+//       },
+//     );
+//   }
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status bar widgets

@@ -83,7 +83,7 @@ LudoController get innerController => _inner;
   // ── public API (mirrors LudoController) ─────────────────────────
 
   LudoGameState  get state          => _inner.state;
-  bool           get enableAudio    => _inner.enableAudio;
+  // bool           get enableAudio    => _inner.enableAudio;
   bool           get isAnimating    => _inner.isAnimating;
   LudoPiece?     get animatingPiece => _inner.animatingPiece;
   bool           get isTeamsMode    => _inner.isTeamsMode;
@@ -93,7 +93,7 @@ LudoController get innerController => _inner;
   bool get isCurrentPlayerBot =>
       botPlayerIndices.contains(state.currentPlayerIndex);
 
-  void toggleAudio(bool enabled) => _inner.toggleAudio(enabled);
+  // void toggleAudio(bool enabled) => _inner.toggleAudio(enabled);
 
   /// For human players only. Throws if called during a bot turn.
   int rollDice() {
