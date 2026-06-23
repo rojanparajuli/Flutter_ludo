@@ -1,4 +1,4 @@
-## 1.0.0
+## 0.1.0
 - audio removed from the package
 - for proper demonstration screenshot is added in README
 
