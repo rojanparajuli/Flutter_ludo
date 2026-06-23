@@ -7,6 +7,10 @@ standard, 4-player Ludo game — there's nothing to get wrong there. Dice
 behaviour is **configurable**. A clean, controller-based architecture keeps
 your app's state management free to do whatever it wants around it.
 
+
+## ScreenShot
+  ![Screenshot](assets/ss.jpg)
+
 ## Features
 
 - Fixed 4-player, standard 15x15 Ludo board (52-cell shared path, 5-cell
