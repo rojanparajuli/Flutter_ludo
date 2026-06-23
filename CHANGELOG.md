@@ -1,3 +1,7 @@
+## 1.0.0
+- audio removed from the package
+- for proper demonstration screenshot is added in README
+
 ## 0.0.10
 - Bot integrated for the project
 
