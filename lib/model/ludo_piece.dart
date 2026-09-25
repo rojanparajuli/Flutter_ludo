@@ -51,11 +51,25 @@ class LudoPiece {
   bool get isOnHomeStretch =>
       trackPosition >= sharedPathSpan && trackPosition < finished;
 
+  /// Serializes this piece for [LudoGameState.toJson].
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'player': playerIndex,
+    'pos': trackPosition,
+  };
+
+  /// Inverse of [toJson].
+  factory LudoPiece.fromJson(Map<String, Object?> json) => LudoPiece(
+    id: json['id']! as int,
+    playerIndex: json['player']! as int,
+    trackPosition: json['pos']! as int,
+  );
+
   LudoPiece copyWith({int? trackPosition}) => LudoPiece(
-        id: id,
-        playerIndex: playerIndex,
-        trackPosition: trackPosition ?? this.trackPosition,
-      );
+    id: id,
+    playerIndex: playerIndex,
+    trackPosition: trackPosition ?? this.trackPosition,
+  );
 
   @override
   bool operator ==(Object other) =>

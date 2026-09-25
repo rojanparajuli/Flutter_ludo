@@ -22,9 +22,9 @@ List<LudoLegalMove> computeLegalMoves(
   int diceValue, {
   List<LudoTeam>? teams,
 }) {
-  final moves       = <LudoLegalMove>[];
+  final moves = <LudoLegalMove>[];
   final playerIndex = state.currentPlayerIndex;
-  final myPieces    = state.pieces.where((p) => p.playerIndex == playerIndex);
+  final myPieces = state.pieces.where((p) => p.playerIndex == playerIndex);
 
   for (final piece in myPieces) {
     if (piece.isFinished) continue;
@@ -43,12 +43,14 @@ List<LudoLegalMove> computeLegalMoves(
         continue;
       }
 
-      moves.add(LudoLegalMove(
-        pieceId: piece.id,
-        playerIndex: playerIndex,
-        fromPosition: LudoPiece.home,
-        toPosition: 0,
-      ));
+      moves.add(
+        LudoLegalMove(
+          pieceId: piece.id,
+          playerIndex: playerIndex,
+          fromPosition: LudoPiece.home,
+          toPosition: 0,
+        ),
+      );
       continue;
     }
 
@@ -69,12 +71,14 @@ List<LudoLegalMove> computeLegalMoves(
       continue;
     }
 
-    moves.add(LudoLegalMove(
-      pieceId: piece.id,
-      playerIndex: playerIndex,
-      fromPosition: piece.trackPosition,
-      toPosition: newPos,
-    ));
+    moves.add(
+      LudoLegalMove(
+        pieceId: piece.id,
+        playerIndex: playerIndex,
+        fromPosition: piece.trackPosition,
+        toPosition: newPos,
+      ),
+    );
   }
 
   return moves;

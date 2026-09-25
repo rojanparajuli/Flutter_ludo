@@ -3,16 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_ludo/flutter_ludo.dart';
 
 List<LudoPlayer> _players() => const [
-      LudoPlayer(name: 'A', color: Colors.red),
-      LudoPlayer(name: 'B', color: Colors.green),
-      LudoPlayer(name: 'C', color: Colors.yellow),
-      LudoPlayer(name: 'D', color: Colors.blue),
-    ];
+  LudoPlayer(name: 'A', color: Colors.red),
+  LudoPlayer(name: 'B', color: Colors.green),
+  LudoPlayer(name: 'C', color: Colors.yellow),
+  LudoPlayer(name: 'D', color: Colors.blue),
+];
 
 List<LudoPiece> _pieces(List<LudoPlayer> players) => [
-      for (var p = 0; p < players.length; p++)
-        for (var i = 0; i < 4; i++) LudoPiece(id: p * 4 + i, playerIndex: p),
-    ];
+  for (var p = 0; p < players.length; p++)
+    for (var i = 0; i < 4; i++) LudoPiece(id: p * 4 + i, playerIndex: p),
+];
 
 void main() {
   group('computeLegalMoves', () {

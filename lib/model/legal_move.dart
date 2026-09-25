@@ -16,6 +16,25 @@ class LudoLegalMove {
   final int fromPosition;
   final int toPosition;
 
+  /// Number of cells this move advances the piece.
+  int get steps => toPosition - fromPosition;
+
+  /// Serializes this move for [LudoGameState.toJson].
+  Map<String, Object?> toJson() => {
+    'piece': pieceId,
+    'player': playerIndex,
+    'from': fromPosition,
+    'to': toPosition,
+  };
+
+  /// Inverse of [toJson].
+  factory LudoLegalMove.fromJson(Map<String, Object?> json) => LudoLegalMove(
+    pieceId: json['piece']! as int,
+    playerIndex: json['player']! as int,
+    fromPosition: json['from']! as int,
+    toPosition: json['to']! as int,
+  );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -30,6 +49,7 @@ class LudoLegalMove {
       Object.hash(pieceId, playerIndex, fromPosition, toPosition);
 
   @override
-  String toString() => 'LudoLegalMove(piece: $pieceId, '
+  String toString() =>
+      'LudoLegalMove(piece: $pieceId, '
       '$fromPosition -> $toPosition)';
 }

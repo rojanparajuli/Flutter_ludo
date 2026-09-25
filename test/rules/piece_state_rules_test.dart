@@ -9,8 +9,11 @@ void main() {
     });
 
     test('finished piece', () {
-      const piece =
-          LudoPiece(id: 0, playerIndex: 0, trackPosition: LudoPiece.finished);
+      const piece = LudoPiece(
+        id: 0,
+        playerIndex: 0,
+        trackPosition: LudoPiece.finished,
+      );
       expect(resolvePieceState(piece), LudoPieceState.finished);
     });
 

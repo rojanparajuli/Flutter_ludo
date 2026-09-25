@@ -1,3 +1,68 @@
+## 0.2.0
+
+### Fixed
+- **Bots stopped after their first action.** The bot controller ignored the
+  state changes caused by its own rolls and moves, so any turn with more
+  than one legal move, any extra turn, or any hand-off from one bot to
+  another stalled forever. Bots now play complete games in every mode.
+- `LudoGame`, `LudoBoard`, and `LudoDice` now rebuild when the controller
+  changes. Before, the UI only updated inside `LudoSetup`.
+- Humans can no longer move pieces or roll during a bot's turn.
+- `reset()` or `dispose()` during a piece animation no longer crashes or
+  applies a stale move.
+- A player who finishes their last piece with a 6 no longer gets a
+  pointless extra roll.
+- Crash ("Duplicate keys") when turns cycled quickly past the same player.
+- The teammate-stack indicator in teams mode never showed.
+- `LudoTheme.centerCellColor` was ignored by the board painter.
+- `LudoPlayer` equality now compares color values, so a player equals its
+  JSON round-trip (`Colors.red` vs `Color(0xFFF44336)`).
+- The screenshot is no longer bundled into every app that depends on the
+  package. It's now a pub.dev `screenshots:` entry.
+
+### Added
+- Bots are built into `LudoController`: `botPlayers`, `botDifficulty`,
+  `botStrategy`, `botThinkDuration`, `setBot()`, `isBot()`,
+  `isCurrentPlayerBot`.
+- Three bot difficulties (`LudoEasyBot`, `LudoMediumBot`, `LudoHardBot`) and
+  a `LudoBotStrategy` interface for custom AI.
+- `LudoDiceRules`: `extraTurnOnCapture`, `extraTurnOnFinish`,
+  `forfeitStreak`, `LudoDiceRules.modern()`, `copyWith`, and value
+  equality.
+- Save and resume: `LudoGameState.toJson()` / `fromJson()`,
+  `LudoController.restore()`.
+- `pause()` / `resume()`, `suggestMove()`, `canRoll`, `canSelectPiece`, and
+  an `onTurnForfeited` callback.
+- `LudoGameState`: `lastRoll`, `lastRollPlayerIndex`, `rollStreak`,
+  `rollCount`, `currentPlayer`, `pieceById`, `finishedCountOf`,
+  `progressOf`, and `LudoGameState.initial()`.
+- `LudoTheme.dark` and new UI-chrome colors (`backgroundColor`,
+  `panelColor`, `textColor`, `mutedTextColor`, `dividerColor`,
+  `lastMovedColor`).
+- The setup screen can pick the bot difficulty and toggle modern rules, and
+  accepts custom player presets.
+- The dice shakes on every roll (bots included) and keeps showing the last
+  roll after the turn passes. Tapping the die also rolls.
+- Pieces of different colors on the same cell now fan out instead of
+  overlapping.
+- Auto-move also applies when every legal move is equivalent (for example,
+  all pieces at home on a 6).
+- Screen-reader labels for the dice, pieces, and setup controls.
+- `LudoTeam` and `kDefaultTeams` are now exported.
+- A new example app and much larger test coverage.
+
+### Changed
+- `LudoBotController` is deprecated in favor of
+  `LudoController(botPlayers: ...)`. It still works.
+- `LudoGame(botController:)` is deprecated. Pass the controller to
+  `controller:` instead.
+- `LudoGame` renders inside a `Material` instead of its own `Scaffold`, so
+  it can be embedded anywhere.
+- The last-moved highlight now stays visible after the turn passes.
+- Minimum SDK is Dart 3.8 / Flutter 3.32 (previously Dart 3.12).
+- Removed the unused `step_animator.dart` and the commented-out
+  `audio_service.dart`.
+
 ## 0.1.0
 - audio removed from the package
 - for proper demonstration screenshot is added in README

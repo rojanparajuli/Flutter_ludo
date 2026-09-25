@@ -1,177 +1,284 @@
 # flutter_ludo
 
-A reusable, production-ready Ludo game engine and board widget for Flutter.
+[![pub package](https://img.shields.io/pub/v/flutter_ludo.svg)](https://pub.dev/packages/flutter_ludo)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Board geometry, capture rules, and win conditions are **fixed** to the
-standard, 4-player Ludo game — there's nothing to get wrong there. Dice
-behaviour is **configurable**. A clean, controller-based architecture keeps
-your app's state management free to do whatever it wants around it.
+A complete Ludo game for Flutter: a rules engine, an animated board and dice,
+bots with three difficulty levels, 2v2 teams, configurable rules, and
+save/restore. Drop in one widget for a full game, or drive the engine
+yourself and build your own UI.
 
-
-## ScreenShot
-  ![Screenshot](assets/ss.jpg)
+![Screenshot](https://raw.githubusercontent.com/rojanparajuli/Flutter_ludo/master/assets/ss.jpg)
 
 ## Features
 
-- Fixed 4-player, standard 15x15 Ludo board (52-cell shared path, 5-cell
-  colored home stretches, 8 safe/star cells).
-- Configurable dice rules: which values let a piece leave home, and which
-  values grant an extra turn.
-- A pure, stateless rules engine (`LudoEngine`) plus a `ChangeNotifier`
-  controller (`LudoController`) that wraps it with events and a mutable
-  game loop.
-- Six events to hook into: dice rolled, piece moved, piece captured, turn
-  changed, player won, game finished.
-- A ready-to-use `LudoGame` widget (board + dice + status bar), or use
-  `LudoBoard` / `LudoDice` standalone and build your own surrounding UI.
-- Theming via `LudoTheme` for colors — board layout and rules are not
-  themeable by design.
-- Unit tests for the rules engine, validation, captures, and win
-  conditions, plus controller and widget tests.
+- **Play against bots.** Any seat can be a bot. There are three built-in
+  difficulties (easy, medium, hard), and you can plug in your own strategy.
+  Seats can switch between human and bot mid-game.
+- **2–4 players**, plus a **2v2 teams mode**.
+- **Configurable rules.** You choose which dice values start a piece and
+  which grant another roll. Optional extras: a bonus roll on capture or on
+  finishing a piece, and "three 6s in a row forfeits the turn". A
+  `LudoDiceRules.modern()` preset turns these on.
+- **Ready-made UI.** `LudoSetup` is a full game with a setup screen.
+  `LudoGame` is the game screen. `LudoBoard` and `LudoDice` can also be used
+  on their own.
+- **Step-by-step piece animation**, dice shake, a highlight on the last
+  moved piece, and stacked pieces fanned out so each one can be seen.
+- **Light and dark themes** through `LudoTheme`.
+- **Save and resume.** `LudoGameState` serializes to JSON.
+- **Pause and resume**, **move hints** (`suggestMove()`), and **8 event
+  callbacks**.
+- **A pure, stateless engine** (`LudoEngine`) that you can use for
+  servers, simulations, or AI training.
+- Screen-reader labels on the dice, pieces, and setup controls.
+- Well tested: rules, engine, controller, bots (full simulated games in
+  every configuration), and widgets.
 
 ## Installation
 
-This is delivered as a local package. Add it to your app's `pubspec.yaml`
-with a path (or git) dependency:
-
-```yaml
-dependencies:
-  flutter_ludo:
-    path: ../flutter_ludo # adjust to wherever you place this folder
+```sh
+flutter pub add flutter_ludo
 ```
 
-Then run `flutter pub get`.
-
-To publish it to your own pub server or pub.dev later, remove the
-`publish_to: none` line in `flutter_ludo/pubspec.yaml` and fill in the
-`homepage` / `repository` fields.
-
 ## Quick start
+
+A complete game with a setup screen:
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter_ludo/flutter_ludo.dart';
 
-final controller = LudoController(
-  players: const [
-    LudoPlayer(name: 'Red', color: Colors.red),
-    LudoPlayer(name: 'Green', color: Colors.green),
-    LudoPlayer(name: 'Yellow', color: Colors.yellow),
-    LudoPlayer(name: 'Blue', color: Colors.blue),
-  ],
-  diceRules: const LudoDiceRules(
-    startAllowedValues: [6], // classic rule
-    extraTurnValues: [6],
-  ),
-  onPlayerWon: (playerIndex, place) => print('Player $playerIndex: place $place'),
-  onGameFinished: (winnersInOrder) => print('Final order: $winnersInOrder'),
-);
-
-// Anywhere in your widget tree:
-LudoGame(controller: controller)
+void main() => runApp(const MaterialApp(home: LudoSetup()));
 ```
 
-`LudoController` is a `ChangeNotifier` you own — create it in `initState`
-(or your state-management layer of choice) and call `controller.dispose()`
-when you're done with it.
-
-## Driving the game manually
-
-If you don't want the bundled `LudoGame` widget, drive everything yourself
-with `LudoController`:
+To skip the setup screen and play against three bots:
 
 ```dart
-final value = controller.rollDice();           // returns 1-6
-final moves = controller.state.legalMoves;      // what can be played
-if (moves.isNotEmpty) {
-  controller.selectPiece(moves.first.pieceId);   // performs the move
+class GameScreen extends StatefulWidget {
+  const GameScreen({super.key});
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  late final controller = LudoController(
+    players: const [
+      LudoPlayer(name: 'You', color: Colors.red),
+      LudoPlayer(name: 'Bot 1', color: Colors.blue),
+      LudoPlayer(name: 'Bot 2', color: Colors.green),
+      LudoPlayer(name: 'Bot 3', color: Colors.amber),
+    ],
+    botPlayers: {1, 2, 3},
+    botDifficulty: LudoBotDifficulty.hard,
+    onGameFinished: (winners) => debugPrint('Ranking: $winners'),
+  );
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(body: LudoGame(controller: controller));
 }
 ```
 
-`controller.state` is an immutable `LudoGameState` exposing `players`,
-`pieces`, `currentPlayerIndex`, `diceValue`, `legalMoves`, `winners`, and
-`isFinished`.
+The widgets listen to the controller, so there is nothing to wire up.
+The controller is yours: create it, then call `dispose()` when you're done.
 
-### Events
+## Bots
+
+```dart
+LudoController(
+  players: players,
+  botPlayers: {1, 3},                         // which seats are bots
+  botDifficulty: LudoBotDifficulty.medium,    // easy | medium | hard
+  botThinkDuration: Duration(milliseconds: 500),
+);
+```
+
+| Difficulty | Plays |
+|---|---|
+| `easy` | A random legal move. |
+| `medium` | Heuristics: capture, leave home, reach safe cells and the home stretch, push the lead piece, avoid landing within 6 cells of an opponent. |
+| `hard` | Medium's heuristics, plus moving threatened pieces to safety and preferring to capture pieces that have travelled further. |
+
+In 4,000-game simulations, `hard` beats `medium` about 52% of the time, and
+both beat `easy` about 85–89% of the time. Ludo is mostly luck, so the gaps
+between skill levels stay small.
+
+At runtime you can:
+
+```dart
+controller.setBot(0, true);                          // bot takes over seat 0
+controller.botDifficulty = LudoBotDifficulty.hard;   // change skill level
+controller.pause();                                  // stop bots, block input
+controller.resume();
+```
+
+### Custom bot strategy
+
+```dart
+class GreedyBot extends LudoBotStrategy {
+  const GreedyBot();
+
+  @override
+  LudoLegalMove chooseMove(LudoGameState state) =>
+      state.legalMoves.reduce((a, b) => a.toPosition >= b.toPosition ? a : b);
+}
+
+LudoController(players: players, botPlayers: {1}, botStrategy: const GreedyBot());
+```
+
+If a strategy throws or returns an illegal move, the controller reports the
+error through `FlutterError.onError` and plays the first legal move, so the
+game never stalls.
+
+## Rules
+
+```dart
+const LudoDiceRules(
+  startAllowedValues: [6],     // values that bring a piece out of home
+  extraTurnValues: [6],        // values that grant another roll
+  extraTurnOnCapture: false,   // bonus roll after capturing
+  extraTurnOnFinish: false,    // bonus roll after a piece reaches the center
+  forfeitStreak: null,         // e.g. 3: the third 6 in a row loses the turn
+)
+
+const LudoDiceRules.modern()   // 6 to start, bonus rolls on 6/capture/finish,
+                               // three 6s forfeit
+```
+
+### Rules reference
+
+- **Players:** 2–4. In teams mode there are exactly 4: seats 0+3 play
+  against seats 1+2.
+- **Board:** standard 15×15 board with a 52-cell shared path. Each player
+  has a 5-cell home stretch. There are 8 safe cells: each start cell plus
+  one star per arm.
+- **Starting:** a piece leaves home only on a value in `startAllowedValues`.
+- **Capturing:** landing exactly on an opponent's piece sends it home,
+  unless the cell is safe. A piece can't land on a safe cell that an
+  opponent occupies. Teammates never capture each other.
+- **Finishing:** a piece needs an exact roll to reach the center. Moves
+  that would overshoot aren't offered.
+- **Turns:** if a roll has no legal move, the turn passes automatically. A
+  player who just finished all 4 pieces never gets a bonus roll.
+- **Game end:** the game ends when all but one player have finished, and
+  the last player is placed last. In teams mode it ends as soon as both
+  players of one team have finished.
+
+## Events
 
 ```dart
 LudoController(
   players: players,
   onDiceRolled: (value) {},
-  onPieceMoved: (piece, fromPosition, toPosition) {},
-  onPieceCaptured: (capturedPiece, byPiece) {},
-  onTurnChanged: (currentPlayerIndex) {},
-  onPlayerWon: (playerIndex, place) {},       // place is 1-based
-  onGameFinished: (winnersInOrder) {},        // full final ranking
+  onPieceMoved: (piece, from, to) {},
+  onPieceCaptured: (captured, by) {},
+  onTurnChanged: (playerIndex) {},
+  onTurnForfeited: (playerIndex, streak) {},
+  onPlayerWon: (playerIndex, place) {},      // place is 1-based
+  onTeamWon: (team) {},
+  onGameFinished: (winnersInOrder) {},
 )
 ```
 
-### Testing without real randomness
-
-`LudoController` accepts a `diceRoller` override, so tests (and replayable
-demos) don't need to depend on real randomness:
+## Save and resume
 
 ```dart
-final rolls = [6, 4, 6];
+final json = jsonEncode(controller.state.toJson());   // store anywhere
+// ...later
+controller.restore(LudoGameState.fromJson(jsonDecode(json)));
+```
+
+## Theming
+
+```dart
+LudoGame(controller: controller, theme: LudoTheme.dark)
+
+LudoSetup(theme: LudoTheme.defaultTheme.copyWith(
+  safeCellColor: Colors.amber.shade100,
+  lastMovedColor: Colors.purple,
+))
+```
+
+## Building your own UI
+
+Use `LudoBoard` and `LudoDice` on their own, or read `controller.state`
+directly:
+
+```dart
+Column(children: [
+  Expanded(child: LudoBoard(controller: controller)),
+  LudoDice(controller: controller),
+])
+```
+
+```dart
+if (controller.canRoll) controller.rollDice();
+final moves = controller.state.legalMoves;
+if (controller.canSelectPiece) await controller.selectPiece(moves.first.pieceId);
+controller.suggestMove();   // the hard bot's pick, handy for hints
+```
+
+`LudoGameState` is immutable. It exposes `players`, `pieces`,
+`currentPlayerIndex`, `phase`, `diceValue`, `lastRoll`, `legalMoves`,
+`winners`, `teams`, and helpers like `progressOf(player)`.
+
+For servers or simulations, use the engine directly:
+
+```dart
+const engine = LudoEngine(LudoDiceRules());
+var state = LudoGameState.initial(players);
+final roll = engine.roll(state, 6);
+state = engine.move(roll.state, roll.state.legalMoves.first.pieceId).state;
+```
+
+## Testing your app
+
+To make games deterministic, script the dice and turn off delays:
+
+```dart
+final rolls = [6, 4, 3];
 var i = 0;
 final controller = LudoController(
   players: players,
   diceRoller: () => rolls[i++],
+  stepAnimationDuration: Duration.zero,   // moves commit immediately
+  autoMoveSingleChoice: false,
 );
 ```
 
-## Rules reference
+## Migrating from 0.1.x
 
-- **Players:** exactly 4, fixed.
-- **Board:** standard 15x15 cross-shaped board; 52-cell shared path; each
-  player has a 5-cell colored home stretch; 8 safe cells (each player's
-  start cell, plus one star cell per arm) where pieces can't be captured.
-- **Starting a piece:** only with a dice value in `diceRules.startAllowedValues`
-  (default `[6]`).
-- **Capturing:** landing exactly on an opponent's piece sends it back home,
-  unless that cell is a safe cell or the opponent is in their own home
-  stretch.
-- **Finishing:** a piece needs an *exact* roll to land on the final cell —
-  rolls that would overshoot are simply not offered as legal moves.
-- **Winning:** a player wins once all 4 of their pieces are finished.
-- **Game end:** once 3 of the 4 players have won, the game ends and the
-  4th (remaining) player is automatically placed last — the standard Ludo
-  convention.
-- **Extra turns:** rolling a value in `diceRules.extraTurnValues` (default
-  `[6]`) lets the same player go again, *as long as* that roll produced a
-  legal move; a roll with no legal moves always passes the turn.
+- Bots are now part of `LudoController`. Replace
+  `LudoBotController(botPlayerIndices: {...}, thinkDuration: d)` with
+  `LudoController(botPlayers: {...}, botThinkDuration: d)`, and
+  `LudoGame(botController: c)` with `LudoGame(controller: c)`. The old names
+  still work but are deprecated.
+- `LudoGame`, `LudoBoard`, and `LudoDice` now rebuild when the controller
+  changes. You no longer need your own `ListenableBuilder`.
+- `LudoTeam` and `kDefaultTeams` are now exported from
+  `package:flutter_ludo/flutter_ludo.dart`.
+- `selectPiece` has always returned a `Future`. Await it, or set
+  `stepAnimationDuration: Duration.zero`, before reading the new state.
+- The `enableAudio` and `showAudioToggle` flags have had no effect since
+  0.1.0 and are now deprecated.
 
-## Package structure
+## Example
 
-```
-lib/
-  constants/   fixed board geometry (grid, path, safe cells, home stretches)
-  service/     AudioService
-  models/      LudoPlayer, LudoPiece, LudoDiceRules, LudoLegalMove, LudoGameState
-  rules/       move validation, capture rules, win conditions (pure functions)
-  engine/      LudoEngine — the pure, stateless turn-flow engine
-  controller/  LudoController — ChangeNotifier wrapper with events
-  themes/      LudoTheme
-  widgets/     LudoGame, LudoBoard, LudoDice
-test/          mirrors the structure above
-example/       a runnable demo app
+The [example app](example/lib/main.dart) shows the setup screen, the dark
+theme, and a game driven from code with hints, pause, and save/restore:
+
+```sh
+cd example && flutter run
 ```
 
-## Running tests
+## License
 
-```
-flutter test
-```
-
-## Roadmap / out of scope for v1.0
-
-- Configurable player counts (2/3-player variants).
-- Blockades (stacking two of your own pieces to block a cell).
-- Animated dice roll / piece movement beyond the simple position fade.
-- Networked/multiplayer transport — `LudoController` is purely local
-  state; wire its events into your own networking layer if needed.
-
-## Versioning
-
-This package follows semantic versioning. See `CHANGELOG.md` for release
-notes.
+MIT. See [LICENSE](LICENSE).

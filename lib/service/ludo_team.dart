@@ -7,12 +7,9 @@ import 'package:flutter/foundation.dart';
 ///  - Team B: player 1 (Blue) + player 2 (Green)  — diagonal corners
 @immutable
 class LudoTeam {
-  const LudoTeam({
-    required this.name,
-    required this.playerIndices,
-  });
+  const LudoTeam({required this.name, required this.playerIndices});
 
-  final String    name;
+  final String name;
   final List<int> playerIndices;
 
   /// Returns true if [playerIndex] belongs to this team.
@@ -24,6 +21,15 @@ class LudoTeam {
     assert(contains(playerIndex), 'Player $playerIndex is not in $name.');
     return playerIndices.firstWhere((i) => i != playerIndex);
   }
+
+  /// Serializes this team for [LudoGameState.toJson].
+  Map<String, Object?> toJson() => {'name': name, 'players': playerIndices};
+
+  /// Inverse of [toJson].
+  factory LudoTeam.fromJson(Map<String, Object?> json) => LudoTeam(
+    name: json['name']! as String,
+    playerIndices: List<int>.unmodifiable(json['players']! as List),
+  );
 
   @override
   bool operator ==(Object other) =>

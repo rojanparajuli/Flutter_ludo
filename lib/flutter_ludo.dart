@@ -1,12 +1,11 @@
 /// flutter_ludo
 ///
-/// A reusable, production-ready Ludo game engine and board widget for
-/// Flutter — fixed rules and board geometry, configurable dice behaviour,
-/// and a clean controller-based architecture. See the package README for
-/// a full usage guide.
-// ignore: unnecessary_library_name
-library flutter_ludo;
+/// A complete Ludo game for Flutter: rules engine, animated board, dice,
+/// bots with three difficulty levels, 2v2 teams mode, configurable dice
+/// rules, and save/restore. See the package README for a full usage guide.
+library;
 
+export 'bot/ludo_bot_strategy.dart';
 export 'constant/board_constants.dart';
 export 'controller/ludo_controller.dart';
 export 'engine/ludo_engine.dart';
@@ -20,6 +19,7 @@ export 'rules/capture_rules.dart';
 export 'rules/move_validator.dart';
 export 'rules/piece_state_rules.dart';
 export 'rules/win_rules.dart';
+export 'service/ludo_team.dart';
 export 'themes/ludo_theme.dart';
 export 'widgets/ludo_board.dart';
 export 'widgets/ludo_dice.dart';
