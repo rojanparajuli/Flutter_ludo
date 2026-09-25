@@ -1,17 +1,26 @@
-
 import 'package:flutter/material.dart';
 
 import '../controller/ludo_controller.dart';
 import '../model/ludo_game_state.dart';
+import '../themes/ludo_theme.dart';
 
+/// Dice face plus a roll button, bound to a [LudoController].
+///
+/// Rebuilds automatically, shakes on every roll (human or bot), keeps
+/// showing the last value after the turn passes, and disables itself while
+/// a bot is playing, a piece is moving, or the game is paused. Tapping the
+/// die itself also rolls.
 class LudoDice extends StatefulWidget {
   const LudoDice({
     super.key,
     required this.controller,
-    this.showAudioToggle = true,
+    this.theme = LudoTheme.defaultTheme,
+    @Deprecated('Audio was removed in 0.1.0. This flag has no effect.')
+    this.showAudioToggle = false,
   });
 
   final LudoController controller;
+  final LudoTheme theme;
   final bool showAudioToggle;
 
   @override
@@ -20,134 +29,214 @@ class LudoDice extends StatefulWidget {
 
 class _LudoDiceState extends State<LudoDice>
     with SingleTickerProviderStateMixin {
-  late AnimationController _shake;
-  late Animation<double>   _dx;
+  late final AnimationController _shake;
+  late final Animation<double> _dx;
+  late int _seenRollCount;
 
   @override
   void initState() {
     super.initState();
     _shake = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 380));
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
     _dx = TweenSequence([
       TweenSequenceItem(tween: Tween(begin: 0.0, end: -5.0), weight: 1),
       TweenSequenceItem(tween: Tween(begin: -5.0, end: 5.0), weight: 2),
       TweenSequenceItem(tween: Tween(begin: 5.0, end: -3.0), weight: 2),
       TweenSequenceItem(tween: Tween(begin: -3.0, end: 0.0), weight: 1),
     ]).animate(CurvedAnimation(parent: _shake, curve: Curves.easeInOut));
+    _seenRollCount = widget.controller.state.rollCount;
+    widget.controller.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(LudoDice old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      old.controller.removeListener(_onChanged);
+      widget.controller.addListener(_onChanged);
+      _seenRollCount = widget.controller.state.rollCount;
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onChanged);
     _shake.dispose();
     super.dispose();
   }
 
+  void _onChanged() {
+    final count = widget.controller.state.rollCount;
+    if (count != _seenRollCount) {
+      _seenRollCount = count;
+      _shake.forward(from: 0);
+    }
+    setState(() {});
+  }
+
   void _roll() {
-    if (widget.controller.isAnimating) return;
-    _shake.forward(from: 0);
-    widget.controller.rollDice();
+    if (widget.controller.canRoll) widget.controller.rollDice();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state       = widget.controller.state;
-    final canRoll     = !state.isFinished &&
-                        state.phase == LudoTurnPhase.awaitingRoll &&
-                        !widget.controller.isAnimating;
-    final playerColor = state.isFinished
-        ? Colors.grey.shade400
+    final ctrl = widget.controller;
+    final theme = widget.theme;
+    final state = ctrl.state;
+    final canRoll = ctrl.canRoll && !state.isFinished;
+
+    final activeColor = state.isFinished
+        ? theme.mutedTextColor
         : state.players[state.currentPlayerIndex].color;
+
+    // Show the pending roll, or the most recent one in its roller's color.
+    final shownValue = state.diceValue ?? state.lastRoll;
+    final rollerIndex = state.diceValue != null
+        ? state.currentPlayerIndex
+        : state.lastRollPlayerIndex;
+    final faceColor = rollerIndex != null && rollerIndex < state.players.length
+        ? state.players[rollerIndex].color
+        : theme.mutedTextColor;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
-        ),
+        color: theme.panelColor,
+        border: Border(top: BorderSide(color: theme.dividerColor)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Dice face
-          AnimatedBuilder(
-            animation: _dx,
-            builder: (_, child) =>
-                Transform.translate(offset: Offset(_dx.value, 0), child: child),
-            child: _DiceFace(value: state.diceValue, color: playerColor),
+          Semantics(
+            label: shownValue == null ? 'Dice' : 'Dice showing $shownValue',
+            child: GestureDetector(
+              onTap: canRoll ? _roll : null,
+              child: AnimatedBuilder(
+                animation: _dx,
+                builder: (_, child) => Transform.translate(
+                  offset: Offset(_dx.value, 0),
+                  child: child,
+                ),
+                child: LudoDiceFace(
+                  value: shownValue,
+                  color: faceColor,
+                  dimmed: state.diceValue == null,
+                  backgroundColor: theme.panelColor,
+                  emptyColor: theme.dividerColor,
+                ),
+              ),
+            ),
           ),
-
           const SizedBox(width: 20),
-
-          // Roll / Moving button
           _RollButton(
-            canRoll: canRoll,
-            isAnimating: widget.controller.isAnimating,
-            color: playerColor,
-            onPressed: _roll,
+            label: _label(ctrl, state),
+            enabled: canRoll,
+            color: activeColor,
+            theme: theme,
+            onTap: _roll,
           ),
-
-          // // Audio toggle
-          // if (widget.showAudioToggle) ...[
-          //   const SizedBox(width: 10),
-          //   // _AudioToggle(controller: widget.controller),
-          // ],
         ],
       ),
     );
   }
+
+  String _label(LudoController ctrl, LudoGameState state) {
+    if (state.isFinished) return 'Game over';
+    if (ctrl.isPaused) return 'Paused';
+    if (ctrl.isAnimating) return 'Moving…';
+    if (ctrl.isCurrentPlayerBot) return 'Bot thinking…';
+    if (state.phase == LudoTurnPhase.awaitingPieceSelection) {
+      return 'Pick a piece';
+    }
+    return 'Roll';
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Flat dice face with pip dots – no shadows, no gradients
-// ─────────────────────────────────────────────────────────────────────────────
+/// A flat die face with pips. Shows a dash when [value] is `null`.
+class LudoDiceFace extends StatelessWidget {
+  const LudoDiceFace({
+    super.key,
+    required this.value,
+    required this.color,
+    this.size = 52,
+    this.dimmed = false,
+    this.backgroundColor = Colors.white,
+    this.emptyColor = const Color(0xFFE0E0E0),
+  }) : assert(value == null || (value >= 1 && value <= 6));
 
-class _DiceFace extends StatelessWidget {
-  const _DiceFace({required this.value, required this.color});
-
-  final int?  value;
+  final int? value;
   final Color color;
+  final double size;
+
+  /// Draws the face at reduced opacity, e.g. for a roll from a previous
+  /// turn.
+  final bool dimmed;
+  final Color backgroundColor;
+  final Color emptyColor;
 
   // Pip grid positions [row 0-2, col 0-2]
   static const Map<int, List<List<int>>> _pips = {
-    1: [[1,1]],
-    2: [[0,0],[2,2]],
-    3: [[0,0],[1,1],[2,2]],
-    4: [[0,0],[0,2],[2,0],[2,2]],
-    5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
-    6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
+    1: [
+      [1, 1],
+    ],
+    2: [
+      [0, 0],
+      [2, 2],
+    ],
+    3: [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ],
+    4: [
+      [0, 0],
+      [0, 2],
+      [2, 0],
+      [2, 2],
+    ],
+    5: [
+      [0, 0],
+      [0, 2],
+      [1, 1],
+      [2, 0],
+      [2, 2],
+    ],
+    6: [
+      [0, 0],
+      [0, 2],
+      [1, 0],
+      [1, 2],
+      [2, 0],
+      [2, 2],
+    ],
   };
 
   @override
   Widget build(BuildContext context) {
-    const size = 52.0;
+    final c = dimmed ? color.withValues(alpha: 0.45) : color;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(
-          color: value != null ? color : Colors.grey.shade300,
-          width: 2.0,
-        ),
-        borderRadius: BorderRadius.circular(8),
+        color: backgroundColor,
+        border: Border.all(color: value != null ? c : emptyColor, width: 2.0),
+        borderRadius: BorderRadius.circular(size * 0.16),
       ),
       child: value == null
           ? Center(
               child: Text(
                 '–',
                 style: TextStyle(
-                  fontSize: 20,
-                  color: Colors.grey.shade400,
+                  fontSize: size * 0.38,
+                  color: emptyColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             )
           : CustomPaint(
-              painter: _PipPainter(
-                pips: _pips[value!]!,
-                color: color,
-              ),
+              painter: _PipPainter(pips: _pips[value!]!, color: c),
             ),
     );
   }
@@ -157,107 +246,73 @@ class _PipPainter extends CustomPainter {
   const _PipPainter({required this.pips, required this.color});
 
   final List<List<int>> pips;
-  final Color           color;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color;
-    const pad   = 8.0;
-    final step  = (size.width - pad * 2) / 2;
-    final r     = size.width * 0.09;
+    final pad = size.width * 0.16;
+    final step = (size.width - pad * 2) / 2;
+    final r = size.width * 0.09;
 
     for (final pip in pips) {
-      final cx = pad + pip[1] * step;
-      final cy = pad + pip[0] * step;
-      canvas.drawCircle(Offset(cx, cy), r, paint);
+      canvas.drawCircle(
+        Offset(pad + pip[1] * step, pad + pip[0] * step),
+        r,
+        paint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_PipPainter old) =>
-      old.pips != pips || old.color != color;
+  bool shouldRepaint(_PipPainter old) => old.pips != pips || old.color != color;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Roll button – flat style, no elevation
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _RollButton extends StatelessWidget {
   const _RollButton({
-    required this.canRoll,
-    required this.isAnimating,
+    required this.label,
+    required this.enabled,
     required this.color,
-    required this.onPressed,
+    required this.theme,
+    required this.onTap,
   });
 
-  final bool     canRoll;
-  final bool     isAnimating;
-  final Color    color;
-  final VoidCallback onPressed;
+  final String label;
+  final bool enabled;
+  final Color color;
+  final LudoTheme theme;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final label  = isAnimating ? 'Moving…' : 'Roll';
-    final active = canRoll;
-
-    return GestureDetector(
-      onTap: active ? onPressed : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-        decoration: BoxDecoration(
-          color: active ? color : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: active ? color : Colors.grey.shade300,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: enabled ? 'Roll dice' : label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          constraints: const BoxConstraints(minWidth: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            color: enabled ? color : theme.dividerColor.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: enabled ? color : theme.dividerColor),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.white : Colors.grey.shade500,
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
-            letterSpacing: 0.3,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: enabled ? Colors.white : theme.mutedTextColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              letterSpacing: 0.3,
+            ),
           ),
         ),
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Audio toggle – icon button
-// ─────────────────────────────────────────────────────────────────────────────
-
-// class _AudioToggle extends StatefulWidget {
-//   const _AudioToggle({required this.controller});
-//   final LudoController controller;
-
-//   @override
-//   State<_AudioToggle> createState() => _AudioToggleState();
-// }
-
-// class _AudioToggleState extends State<_AudioToggle> {
-//   late bool _on;
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _on = widget.controller.enableAudio;
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return IconButton(
-//       icon: Icon(_on ? Icons.volume_up : Icons.volume_off),
-//       color: _on ? Colors.blueGrey : Colors.grey.shade400,
-//       iconSize: 22,
-//       tooltip: _on ? 'Mute' : 'Unmute',
-//       onPressed: () {
-//         setState(() => _on = !_on);
-//         widget.controller.toggleAudio(_on);
-//       },
-//     );
-//   }
-// }

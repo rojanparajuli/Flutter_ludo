@@ -29,14 +29,14 @@ class LudoMoveScorer {
   const LudoMoveScorer();
 
   // ── score weights ────────────────────────────────────────────────
-  static const int _captureScore      =  50;
-  static const int _enterStretchScore =  40;
-  static const int _leaveHomeScore    =  30;
-  static const int _safeLandScore     =  25;
-  static const int _leadPieceBonus    =  20;
-  static const int _progressScore     =  10;
-  static const int _dangerPenalty     = -30;
-  static const int _leaveSafePenalty  = -10;
+  static const int _captureScore = 50;
+  static const int _enterStretchScore = 40;
+  static const int _leaveHomeScore = 30;
+  static const int _safeLandScore = 25;
+  static const int _leadPieceBonus = 20;
+  static const int _progressScore = 10;
+  static const int _dangerPenalty = -30;
+  static const int _leaveSafePenalty = -10;
 
   /// Returns the best [LudoLegalMove] from [state.legalMoves] according to
   /// the heuristic scoring. Never returns null — there is always at least one
@@ -52,7 +52,7 @@ class LudoMoveScorer {
       // Tie-break: prefer the piece furthest along the track.
       if (score > bestScore ||
           (score == bestScore && _tieBreak(move, best, state))) {
-        best      = move;
+        best = move;
         bestScore = score;
       }
     }
@@ -65,12 +65,12 @@ class LudoMoveScorer {
   int _score(LudoLegalMove move, LudoGameState state) {
     int score = 0;
 
-    final piece    = state.pieces.firstWhere((p) => p.id == move.pieceId);
-    final toPos    = move.toPosition;
-    final fromPos  = move.fromPosition;
-    final myIndex  = state.currentPlayerIndex;
-    final pieces   = state.pieces;
-    final teams    = state.teams;
+    final piece = state.pieces.firstWhere((p) => p.id == move.pieceId);
+    final toPos = move.toPosition;
+    final fromPos = move.fromPosition;
+    final myIndex = state.currentPlayerIndex;
+    final pieces = state.pieces;
+    final teams = state.teams;
 
     // ── 1. Capture ───────────────────────────────────────────────
     if (_wouldCapture(myIndex, toPos, pieces, teams)) {
@@ -79,7 +79,7 @@ class LudoMoveScorer {
 
     // ── 2. Enter home stretch ────────────────────────────────────
     final wasOnStretch = fromPos >= LudoPiece.sharedPathSpan && fromPos > 0;
-    final nowOnStretch = toPos   >= LudoPiece.sharedPathSpan;
+    final nowOnStretch = toPos >= LudoPiece.sharedPathSpan;
     if (nowOnStretch && !wasOnStretch) {
       score += _enterStretchScore;
     }
@@ -95,7 +95,9 @@ class LudoMoveScorer {
     }
 
     // ── 5. Moving from a safe cell unnecessarily ─────────────────
-    if (!piece.isHome && _isSafe(myIndex, fromPos) && !_isSafe(myIndex, toPos)) {
+    if (!piece.isHome &&
+        _isSafe(myIndex, fromPos) &&
+        !_isSafe(myIndex, toPos)) {
       score += _leaveSafePenalty;
     }
 

@@ -17,13 +17,26 @@ class LudoPlayer {
   /// stretch.
   final Color color;
 
+  /// Serializes this player for [LudoGameState.toJson].
+  Map<String, Object?> toJson() => {'name': name, 'color': color.toARGB32()};
+
+  /// Inverse of [toJson].
+  factory LudoPlayer.fromJson(Map<String, Object?> json) => LudoPlayer(
+    name: json['name']! as String,
+    color: Color(json['color']! as int),
+  );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is LudoPlayer && other.name == name && other.color == color);
+      (other is LudoPlayer &&
+          other.name == name &&
+          // Compare values: Colors.red (a MaterialColor) must equal the
+          // plain Color it deserializes to.
+          other.color.toARGB32() == color.toARGB32());
 
   @override
-  int get hashCode => Object.hash(name, color);
+  int get hashCode => Object.hash(name, color.toARGB32());
 
   @override
   String toString() => 'LudoPlayer($name)';

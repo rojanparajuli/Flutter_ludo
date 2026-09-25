@@ -1,30 +1,23 @@
-// // This is a basic Flutter widget test.
-// //
-// // To perform an interaction with a widget in your test, use the WidgetTester
-// // utility in the flutter_test package. For example, you can send tap and scroll
-// // gestures. You can also use WidgetTester to find child widgets in the widget
-// // tree, read text, and verify that the values of widget properties are correct.
+import 'package:flutter_ludo/flutter_ludo.dart';
+import 'package:flutter_ludo_example/main.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-// import 'package:flutter/material.dart';
-// import 'package:flutter_test/flutter_test.dart';
+void main() {
+  testWidgets('home screen opens the custom bot game', (tester) async {
+    await tester.pumpWidget(const LudoExampleApp());
+    expect(find.text('Quick match'), findsOneWidget);
 
-// import 'package:flutter_ludo_example/main.dart';
+    await tester.tap(find.text('You vs 3 hard bots'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LudoGame), findsOneWidget);
+    expect(find.text("You's turn"), findsOneWidget);
 
-// void main() {
-//   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-//     // Build our app and trigger a frame.
-//     await tester.pumpWidget(const MyApp());
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+    expect(find.byTooltip('Resume'), findsOneWidget);
 
-//     // Verify that our counter starts at 0.
-//     expect(find.text('0'), findsOneWidget);
-//     expect(find.text('1'), findsNothing);
-
-//     // Tap the '+' icon and trigger a frame.
-//     await tester.tap(find.byIcon(Icons.add));
-//     await tester.pump();
-
-//     // Verify that our counter has incremented.
-//     expect(find.text('0'), findsNothing);
-//     expect(find.text('1'), findsOneWidget);
-//   });
-// }
+    // Leave the screen so the controller is disposed.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  });
+}
