@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:fake_async/fake_async.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 // ignore: deprecated_member_use_from_same_package
 import 'package:flutter_ludo/bot/ludo_bot_controller.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,3 +1,13 @@
+## 0.3.0
+
+### Changed
+- Migrated from the deprecated `package:flutter/material.dart` to
+  `package:material_ui/material_ui.dart` (Flutter 3.47 moved Material out of
+  the framework). Adds a dependency on `material_ui: ^1.11.1`.
+- **Minimum requirements raised** to Flutter 3.47.0 and Dart 3.13.0, as
+  required by `material_ui`.
+- `analysis_options.yaml` now excludes `build/` output.
+
 ## 0.2.0
 
 ### Fixed
