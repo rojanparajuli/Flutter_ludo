@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../controller/ludo_controller.dart';
 import '../model/ludo_game_state.dart';
